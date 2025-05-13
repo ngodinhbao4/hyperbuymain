@@ -1,0 +1,75 @@
+# Thuộc tính 'version' không còn cần thiết cho các phiên bản Docker Compose mới
+# version: '3.8'
+
+services:
+  # Định nghĩa service cho ứng dụng userservice của bạn
+  userservice:
+    build:
+      context: ./user # Đường dẫn đến thư mục chứa Dockerfile của userservice
+      dockerfile: Dockerfile
+    container_name: user-service-app
+    ports:
+      - "8080:8080" # userservice chạy trên port 8080 trong container
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperBuy?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+      - JWT_SIGNER_KEY=!TJXchW5FLOeSBb63Kck+DFHTaRpWL4JUGcWFgWxUG5S1F/ly/LgJxHnMQaF46A/i
+      # - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - my-network
+
+  # Định nghĩa service cho ứng dụng productservice của bạn
+  productservice:
+    build:
+      context: ./product # Đường dẫn đến thư mục chứa Dockerfile của productservice
+      dockerfile: Dockerfile
+    container_name: product-service-app
+    ports:
+      - "8081:8081" # productservice chạy trên port 8081 trong container (thay đổi nếu cần)
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperBuy?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+      # (Tùy chọn) Nếu productservice có các biến môi trường riêng, thêm vào đây
+      # - SPRING_PROFILES_ACTIVE=docker
+      # Cấu hình để productservice có thể gọi userservice (nếu cần)
+      # - USER_SERVICE_URL=http://userservice:8080/api/v1/users # Ví dụ
+    depends_on:
+      db:
+        condition: service_healthy
+      # (Tùy chọn) Nếu productservice cần userservice khởi động trước (ít phổ biến cho giao tiếp API)
+      # userservice:
+      #   condition: service_started
+    networks:
+      - my-network
+
+  # Định nghĩa service cho cơ sở dữ liệu MySQL
+  db:
+    image: mysql:8.0
+    container_name: mysql-db
+    ports:
+      - "3307:3306" # Ánh xạ cổng 3307 của host ra 3306 của container
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=hyperBuy
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-P", "3306", "-u" , "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - my-network
+
+volumes:
+  mysql_data:
+
+networks:
+  my-network:
+    driver: bridge
