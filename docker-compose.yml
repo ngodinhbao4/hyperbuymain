@@ -5,16 +5,16 @@ services:
   # Định nghĩa service cho ứng dụng userservice của bạn
   userservice:
     build:
-      context: ./user # Đường dẫn đến thư mục chứa Dockerfile của userservice
-      dockerfile: Dockerfile
+      context: .  # Ngữ cảnh build là thư mục hiện tại (thư mục gốc của dự án đa module, ví dụ: hyperBuy-main/)
+      dockerfile: user/Dockerfile # Đường dẫn đến Dockerfile của module 'user' từ thư mục gốc
     container_name: user-service-app
     ports:
       - "8080:8080" # userservice chạy trên port 8080 trong container
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperBuy?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=root
-      - JWT_SIGNER_KEY=!TJXchW5FLOeSBb63Kck+DFHTaRpWL4JUGcWFgWxUG5S1F/ly/LgJxHnMQaF46A/i
+      - SPRING_DATASOURCE_PASSWORD=root # Nên quản lý qua .env file
+      - JWT_SIGNER_KEY=!TJXchW5FLOeSBb63Kck+DFHTaRpWL4JUGcWFgWxUG5S1F/ly/LgJxHnMQaF46A/i # Nên quản lý qua .env file
       # - SPRING_PROFILES_ACTIVE=docker
     depends_on:
       db:
@@ -25,15 +25,15 @@ services:
   # Định nghĩa service cho ứng dụng productservice của bạn
   productservice:
     build:
-      context: ./product # Đường dẫn đến thư mục chứa Dockerfile của productservice
-      dockerfile: Dockerfile
+      context: .  # Ngữ cảnh build là thư mục hiện tại (thư mục gốc của dự án đa module)
+      dockerfile: product/Dockerfile # Đường dẫn đến Dockerfile của module 'product' từ thư mục gốc
     container_name: product-service-app
     ports:
-      - "8081:8081" # productservice chạy trên port 8081 trong container (thay đổi nếu cần)
+      - "8081:8081" # productservice chạy trên port 8081 trong container
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperBuy?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=root
+      - SPRING_DATASOURCE_PASSWORD=root # Nên quản lý qua .env file
       # (Tùy chọn) Nếu productservice có các biến môi trường riêng, thêm vào đây
       # - SPRING_PROFILES_ACTIVE=docker
       # Cấu hình để productservice có thể gọi userservice (nếu cần)
@@ -41,9 +41,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # (Tùy chọn) Nếu productservice cần userservice khởi động trước (ít phổ biến cho giao tiếp API)
-      # userservice:
-      #   condition: service_started
     networks:
       - my-network
 
@@ -54,7 +51,8 @@ services:
     ports:
       - "3307:3306" # Ánh xạ cổng 3307 của host ra 3306 của container
     environment:
-      - MYSQL_ROOT_PASSWORD=root
+      # QUAN TRỌNG: Nên sử dụng file .env để quản lý các biến nhạy cảm này
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root} # Sử dụng biến từ .env, nếu không có thì mặc định là 'root' (không khuyến khích cho production)
       - MYSQL_DATABASE=hyperBuy
     volumes:
       - mysql_data:/var/lib/mysql
@@ -68,8 +66,8 @@ services:
       - my-network
 
 volumes:
-  mysql_data:
+  mysql_data: # Volume để lưu trữ dữ liệu của MySQL
 
 networks:
-  my-network:
+  my-network: # Mạng tùy chỉnh để các container có thể giao tiếp với nhau qua tên service
     driver: bridge
