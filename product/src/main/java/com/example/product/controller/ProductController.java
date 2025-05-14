@@ -52,9 +52,10 @@ public class ProductController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-        // Thực hiện soft delete
+       
         productService.deleteProduct(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.noContent()
+            .build();
     }
 
     @PatchMapping("/{id}/stock") // Dùng PATCH vì chỉ cập nhật một phần (tồn kho)
