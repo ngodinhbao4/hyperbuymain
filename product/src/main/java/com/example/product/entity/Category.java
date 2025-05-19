@@ -2,17 +2,23 @@ package com.example.product.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter; // Changed from @Data
 import lombok.NoArgsConstructor;
+import lombok.Setter; // Changed from @Data
+import lombok.ToString; // Added for better control
+import lombok.EqualsAndHashCode; // Added for better control
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.Set;
 
-@Data
-@AllArgsConstructor
+@Getter
+@Setter
 @NoArgsConstructor
+@AllArgsConstructor
+@ToString(exclude = "products") // Exclude products to prevent potential infinite loops in toString
+@EqualsAndHashCode(of = "id") // Use only id for equals and hashCode for JPA entities
 @Entity
 @Table(name = "categories")
 public class Category {
@@ -24,26 +30,25 @@ public class Category {
     @Column(name = "name", nullable = false, unique = true, length = 255)
     private String name;
 
-    @Lob // Dùng @Lob cho kiểu TEXT dài hơn VARCHAR
+    @Lob
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
     @Column(name = "is_active", nullable = false, columnDefinition = "BOOLEAN DEFAULT TRUE")
-    private boolean isActive = true; // Giá trị mặc định
+    private boolean isActive = true;
 
-    @CreationTimestamp // Hibernate tự động gán thời gian tạo
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @UpdateTimestamp // Hibernate tự động gán thời gian cập nhật
+    @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
     // Định nghĩa mối quan hệ một-nhiều với Product
-    // 'mappedBy = "category"' chỉ ra rằng trường 'category' trong Product entity là chủ của mối quan hệ này
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    // Changed CascadeType: Removed CascadeType.ALL to prevent accidental deletion of products
+    // when a category is deleted. Deletion logic should be handled in the service layer.
+    @OneToMany(mappedBy = "category", fetch = FetchType.LAZY,
+               cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     private Set<Product> products;
-
-    // Constructors, Getters, Setters được Lombok tự tạo
-    // Bạn có thể thêm các constructor tùy chỉnh nếu cần
 }
