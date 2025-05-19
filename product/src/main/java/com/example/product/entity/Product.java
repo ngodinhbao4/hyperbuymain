@@ -33,8 +33,7 @@ public class Product {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    // Mối quan hệ nhiều-một với Category
-    @ManyToOne(fetch = FetchType.LAZY) // LAZY loading thường tốt hơn cho hiệu năng
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
 
@@ -46,13 +45,13 @@ public class Product {
 
     @Lob
     @Column(name = "image_url", columnDefinition = "TEXT")
-    private String imageUrl; // Có thể lưu một URL hoặc JSON string của nhiều URL
+    private String imageUrl; // Stores the filename or relative path of the uploaded image
 
     @Column(name = "is_active", nullable = false, columnDefinition = "BOOLEAN DEFAULT TRUE")
     private boolean isActive = true;
 
     @Column(name = "is_deleted", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
-    private boolean isDeleted = false; // Cho soft delete
+    private boolean isDeleted = false;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -61,6 +60,4 @@ public class Product {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
-
-    // Constructors, Getters, Setters được Lombok tự tạo
 }

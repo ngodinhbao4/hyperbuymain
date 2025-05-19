@@ -8,24 +8,46 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault; // Để set default pageable
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/api/v1/products") // Base path cho product API
+@RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
 public class ProductController {
 
     private final ProductService productService;
 
-    @PostMapping
-    public ResponseEntity<ProductResponse> createProduct(@Valid @RequestBody ProductRequest productRequest) {
-        ProductResponse createdProduct = productService.createProduct(productRequest);
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProductResponse> createProduct(
+            @Valid @RequestPart("productRequest") ProductRequest productRequest,
+            @RequestPart(value = "imageFile", required = false) MultipartFile imageFile) {
+        ProductResponse createdProduct = productService.createProduct(productRequest, imageFile);
         return new ResponseEntity<>(createdProduct, HttpStatus.CREATED);
     }
 
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProductResponse> updateProduct(
+            @PathVariable Long id,
+            @Valid @RequestPart("productRequest") ProductRequest productRequest,
+            @RequestPart(value = "imageFile", required = false) MultipartFile imageFile) {
+        ProductResponse updatedProduct = productService.updateProduct(id, productRequest, imageFile);
+        return ResponseEntity.ok(updatedProduct);
+    }
+
+    @PutMapping(value = "/{id}/stock", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ProductResponse> updateStock(
+        @PathVariable Long id,
+        @Valid @RequestBody UpdateStockRequest updateStockRequest) {
+    ProductResponse updatedProduct = productService.updateStock(id, updateStockRequest.getChange());
+    return ResponseEntity.ok(updatedProduct);
+}
+
+    // Các endpoint khác giữ nguyên
     @GetMapping("/{id}")
     public ResponseEntity<ProductResponse> getProductById(@PathVariable Long id) {
         ProductResponse product = productService.getProductById(id);
@@ -35,34 +57,16 @@ public class ProductController {
     @GetMapping
     public ResponseEntity<Page<ProductResponse>> findProducts(
             @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) String q, // Tham số tìm kiếm theo tên
-            // PageableDefault để đặt giá trị mặc định cho phân trang/sắp xếp nếu client không gửi
+            @RequestParam(required = false) String q,
             @PageableDefault(size = 10, sort = "name") Pageable pageable) {
-
         Page<ProductResponse> productPage = productService.findProducts(categoryId, q, pageable);
         return ResponseEntity.ok(productPage);
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<ProductResponse> updateProduct(@PathVariable Long id,
-                                                     @Valid @RequestBody ProductRequest productRequest) {
-        ProductResponse updatedProduct = productService.updateProduct(id, productRequest);
-        return ResponseEntity.ok(updatedProduct);
-    }
-
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-       
         productService.deleteProduct(id);
-        return ResponseEntity.noContent()
-            .build();
-    }
-
-    @PatchMapping("/{id}/stock") // Dùng PATCH vì chỉ cập nhật một phần (tồn kho)
-    public ResponseEntity<ProductResponse> updateStock(@PathVariable Long id,
-                                                 @Valid @RequestBody UpdateStockRequest updateStockRequest) {
-       ProductResponse updatedProduct = productService.updateStock(id, updateStockRequest.getChange());
-       return ResponseEntity.ok(updatedProduct);
+        return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/{id}/activate")
@@ -71,7 +75,7 @@ public class ProductController {
         return ResponseEntity.ok().build();
     }
 
-     @PatchMapping("/{id}/deactivate")
+    @PatchMapping("/{id}/deactivate")
     public ResponseEntity<Void> deactivateProduct(@PathVariable Long id) {
         productService.deactivateProduct(id);
         return ResponseEntity.ok().build();
