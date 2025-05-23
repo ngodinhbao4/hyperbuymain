@@ -263,12 +263,10 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public void deleteProduct(Long id) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + id));
-        product.setDeleted(true);
-        product.setActive(false);
-        productRepository.save(product);
-        logger.info("Đã xóa mềm sản phẩm với ID: {}", id);
-    }
+            .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + id));
+        productRepository.delete(product);
+        logger.info("Đã xóa sản phẩm với ID: {}", id);
+        }
 
     @Override
     @Transactional
@@ -310,8 +308,6 @@ public class ProductServiceImpl implements ProductService {
     @Transactional(readOnly = true)
     public Page<ProductResponse> findMyProducts(Long categoryId, String nameQuery, Pageable pageable) {
         logger.warn("findMyProducts chưa được triển khai đầy đủ với ngữ cảnh người dùng, hoạt động giống findProducts.");
-        // TODO: Implement logic tìm kiếm sản phẩm của người dùng cụ thể,
-        // và cũng cần lọc theo is_active=true, is_deleted=false
         return findProducts(categoryId, nameQuery, pageable);
     }
 }

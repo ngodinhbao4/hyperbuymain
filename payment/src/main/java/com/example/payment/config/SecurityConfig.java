@@ -1,5 +1,4 @@
-// Package: com.example.order.config (hoặc package config của OrderService)
-package com.example.order.config;
+package com.example.payment.config;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -19,35 +18,32 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
-
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true) // Kích hoạt @PreAuthorize, @Secured
+@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true)
 public class SecurityConfig {
 
     @Value("${jwt.signerKey}")
     private String jwtSecretKeyString;
 
-    // Các endpoint công khai cho OrderService
-    private static final String[] PUBLIC_MATCHERS_ORDER = {
+    private static final String API_PAYMENTS_BASE_PATH = "/api/v1/payments";
+
+    // Các endpoint công khai (ví dụ: webhook từ cổng thanh toán nếu nó không dùng xác thực phức tạp)
+    // Cần cẩn thận với webhook, nên có cơ chế xác thực riêng (ví dụ: signature header)
+    private static final String[] PUBLIC_MATCHERS_PAYMENT = {
+            API_PAYMENTS_BASE_PATH + "/webhook/**", // Cần bảo vệ webhook cẩn thận!
             "/swagger-ui/**",
             "/v3/api-docs/**",
             "/swagger-resources/**",
             "/actuator/**",
             "/api/v1/ **",
-            "/api/v1/orders/**"
-            // Thêm các public endpoint khác của OrderService nếu có
-    };
+            "/api/v1/payments/ **"
 
-    // Các endpoint người dùng có thể truy cập sau khi xác thực
-    // Quyền truy cập chi tiết hơn (ví dụ: chỉ chủ sở hữu đơn hàng)
-    // sẽ được xử lý ở cấp độ phương thức controller bằng @PreAuthorize
-    private static final String API_ORDERS_BASE_PATH = "/api/v1/orders";
+    };
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -62,21 +58,14 @@ public class SecurityConfig {
                 return configuration;
             }))
             .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers(PUBLIC_MATCHERS_ORDER).permitAll()
-                // Endpoint tạo đơn hàng: cần xác thực
-                .requestMatchers(HttpMethod.POST, API_ORDERS_BASE_PATH).authenticated()
-                // Endpoint lấy danh sách đơn hàng của người dùng hiện tại (ví dụ)
-                .requestMatchers(HttpMethod.GET, API_ORDERS_BASE_PATH + "/my-orders").authenticated()
-                // Endpoint lấy chi tiết đơn hàng theo orderId: cần xác thực.
-                // Việc kiểm tra user có phải chủ sở hữu đơn hàng không sẽ dùng @PreAuthorize ở controller.
-                .requestMatchers(HttpMethod.GET, API_ORDERS_BASE_PATH + "/{orderId}").authenticated()
-                // Endpoint cập nhật trạng thái đơn hàng: cần xác thực.
-                // Việc kiểm tra quyền (ví dụ: chỉ ADMIN hoặc hệ thống nội bộ) sẽ dùng @PreAuthorize.
-                .requestMatchers(HttpMethod.PUT, API_ORDERS_BASE_PATH + "/{orderId}/status").authenticated()
-                // Endpoint lấy danh sách đơn hàng theo userId (ví dụ cho admin hoặc user xem của chính mình)
-                // Nếu cho admin: .requestMatchers(HttpMethod.GET, API_ORDERS_BASE_PATH + "/user/{userId}").hasRole("ADMIN")
-                // Nếu cho user xem của chính mình, sẽ dùng @PreAuthorize ở controller để so sánh userId trong path với userId trong token.
-                .requestMatchers(HttpMethod.GET, API_ORDERS_BASE_PATH + "/user/{userId}").authenticated()
+                .requestMatchers(PUBLIC_MATCHERS_PAYMENT).permitAll()
+                // Các endpoint xử lý thanh toán, lấy thông tin thanh toán thường được gọi từ service khác (OrderService)
+                // và nên được bảo vệ. OrderService khi gọi PaymentService sẽ cần gửi token (nếu PaymentService yêu cầu)
+                // hoặc sử dụng một cơ chế xác thực service-to-service khác (ví dụ: mTLS, API key).
+                // Giả sử các endpoint này yêu cầu xác thực từ OrderService (hoặc người dùng nếu gọi trực tiếp)
+                .requestMatchers(HttpMethod.POST, API_PAYMENTS_BASE_PATH + "/process").authenticated()
+                .requestMatchers(HttpMethod.GET, API_PAYMENTS_BASE_PATH + "/order/{orderId}").authenticated()
+                .requestMatchers(HttpMethod.GET, API_PAYMENTS_BASE_PATH + "/{paymentId}").authenticated()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
@@ -102,12 +91,9 @@ public class SecurityConfig {
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        grantedAuthoritiesConverter.setAuthorityPrefix(""); // Giữ nguyên như CartService
-        // grantedAuthoritiesConverter.setAuthoritiesClaimName("authorities"); // Nếu roles nằm trong claim "authorities"
-
+        grantedAuthoritiesConverter.setAuthorityPrefix("");
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
         jwtConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
-        // jwtConverter.setPrincipalClaimName("user_id"); // Nếu userId nằm trong claim "user_id" thay vì "sub"
         return jwtConverter;
     }
 
@@ -121,10 +107,5 @@ public class SecurityConfig {
         config.addAllowedMethod("*");
         source.registerCorsConfiguration("/**", config);
         return new CorsFilter(source);
-    }
-
-    @Bean
-    public RestTemplate restTemplate() {
-        return new RestTemplate();
     }
 }

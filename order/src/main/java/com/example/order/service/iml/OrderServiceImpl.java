@@ -316,6 +316,7 @@ public OrderResponse createOrder(CreateOrderRequest createOrderRequest, String a
         }
     }
 
+    @Transactional(readOnly = true)
     @Override
     public OrderResponse getOrderById(Long orderId) { // Sửa kiểu trả về
         logger.debug("Fetching order by ID: {}", orderId);
