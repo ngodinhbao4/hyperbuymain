@@ -16,9 +16,11 @@ import com.example.cartservice.repository.CartItemRepository;
 import com.example.cartservice.repository.CartRepository;
 
 import feign.FeignException; // Import FeignException
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,9 +39,13 @@ public class CartServiceImpl implements CartService {
     private final ProductServiceClient productServiceClient;
     private final CartMapper cartMapper;
     private final CartItemMapper cartItemMapper;
-
+    @Value("${product.service.public.url:http://localhost:8081}")
+    private String productServicePublicUrl;
     // --- Helper Methods ---
-
+    @PostConstruct
+    public void init() {
+        log.info("ProductService URL configured: {}", productServicePublicUrl);
+    }
     /**
      * Lấy entity Cart của user, nếu chưa có thì tạo mới.
      */
@@ -58,23 +64,20 @@ public class CartServiceImpl implements CartService {
      */
     private ProductDetailRequest fetchProductDetailsOrFail(String productId) {
         try {
-            log.debug("Fetching product details for productId: {}", productId);
             ProductDetailRequest productDetail = productServiceClient.getProductById(productId);
             if (productDetail == null || productDetail.getId() == null) {
-                log.warn("ProductService returned null or invalid data for productId: {}", productId);
                 throw new CartException(ErrorCodeCart.PRODUCT_NOT_AVAILABLE, "Product details are invalid for ID: " + productId);
+            }
+            // Điều chỉnh imageUrl
+            if (productDetail.getImageUrl() != null && productDetail.getImageUrl().contains("productservice:8081")) {
+                String publicHost = productServicePublicUrl.replace("http://", "");
+                String newImageUrl = productDetail.getImageUrl().replace("productservice:8081", publicHost);
+                log.info("Adjusted imageUrl from {} to {}", productDetail.getImageUrl(), newImageUrl);
+                productDetail.setImageUrl(newImageUrl);
             }
             return productDetail;
         } catch (FeignException e) {
-            log.error("FeignException while calling ProductService for productId {}: status={}, message={}", productId, e.status(), e.getMessage(), e);
-            if (e.status() == 404) { // Not Found
-                throw new CartException(ErrorCodeCart.PRODUCT_NOT_AVAILABLE, "Product with ID " + productId + " not found via Product Service.");
-            }
-            // Các lỗi Feign khác (5xx, timeout, etc.)
-            throw new CartException(ErrorCodeCart.PRODUCT_SERVICE_UNREACHABLE, "Could not retrieve product details for ID: " + productId + ". Service might be down.");
-        } catch (Exception e) { // Các lỗi không mong muốn khác khi gọi ProductService
-            log.error("Unexpected exception while fetching product details for ID {}: {}", productId, e.getMessage(), e);
-            throw new CartException(ErrorCodeCart.PRODUCT_SERVICE_UNREACHABLE, "Unexpected error fetching product details for ID: " + productId + ".");
+            throw new CartException(ErrorCodeCart.PRODUCT_SERVICE_UNREACHABLE, "Could not retrieve product details for ID: " + productId);
         }
     }
 

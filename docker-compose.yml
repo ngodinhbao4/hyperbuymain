@@ -99,6 +99,30 @@ services:
     networks:
       - my-network
 
+  paymentservice:
+    build:
+      context: .
+      dockerfile: payment/Dockerfile
+    container_name: payment-service-app
+    ports:
+      - "8084:8084"
+    environment:
+      # Sửa tên database thành hyperbuy_cart_db
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_payment_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=your_root_password
+      - ORDER_SERVICE_URL=http://orderservice:8083
+      - JWT_SIGNER_KEY=${JWT_SIGNER_KEY:-!TJXchW5FLOeSBb63Kck+DFHTaRpWL4JUGcWFgWxUG5S1F/ly/LgJxHnMQaF46A/i}
+      # - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      db:
+        condition: service_healthy
+      productservice:
+        condition: service_started
+      userservice:
+        condition: service_started
+    networks:
+      - my-network
 
   # Định nghĩa service cho cơ sở dữ liệu MySQL
   db:

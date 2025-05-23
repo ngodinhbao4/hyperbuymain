@@ -2,7 +2,9 @@ package com.example.product.service; // Giữ nguyên package của bạn
 
 import com.example.product.dto.request.CategoryRequest;
 import com.example.product.dto.response.CategoryResponse;
+import com.example.product.dto.response.ProductResponse;
 import com.example.product.entity.Category;
+import com.example.product.entity.Product;
 // Import AppException và ErrorCode
 import com.example.product.exception.AppException;
 import com.example.product.exception.ErrorCode;
@@ -41,9 +43,33 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional(readOnly = true)
     public CategoryResponse getCategoryById(Long id) {
         Category category = categoryRepository.findById(id)
-                // Ném AppException với ErrorCode tương ứng
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
-        return mapToResponse(category);
+
+        CategoryResponse response = mapToResponse(category);
+
+        // Lấy sản phẩm active và chưa bị xóa
+        List<ProductResponse> products = productRepository
+                .findByCategoryIdAndIsDeletedFalseAndIsActiveTrue(id, null)
+                .stream()
+                .map(this::mapToProductResponse)
+                .collect(Collectors.toList());
+
+        response.setProducts(products);
+        return response;
+    }
+
+    private ProductResponse mapToProductResponse(Product product) {
+        ProductResponse response = new ProductResponse();
+        response.setId(product.getId());
+        response.setName(product.getName());
+        response.setDescription(product.getDescription());
+        response.setPrice(product.getPrice());
+        response.setSku(product.getSku());
+        response.setStockQuantity(product.getStockQuantity());
+        response.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
+        response.setActive(product.isActive());
+        response.setImageUrl(product.getImageUrl());
+        return response;
     }
 
     @Override

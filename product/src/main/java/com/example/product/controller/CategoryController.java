@@ -27,7 +27,7 @@ public class CategoryController {
     @GetMapping("/{id}")
     public ResponseEntity<CategoryResponse> getCategoryById(@PathVariable Long id) {
         CategoryResponse category = categoryService.getCategoryById(id);
-        return ResponseEntity.ok(category); // Trả về 200 OK
+        return ResponseEntity.ok(category); // Bao gồm sản phẩm
     }
 
     @GetMapping
