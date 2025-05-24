@@ -15,6 +15,10 @@ public enum ErrorCode {
     USER_NOT_EXISTED(1005, "User not existed", HttpStatus.NOT_FOUND),
     UNAUTHENTICATED(1006, "Unauthenticated", HttpStatus.UNAUTHORIZED),
     UNAUTHORIZED(1007, "You do not have permission", HttpStatus.FORBIDDEN),
+    ROLE_NOT_FOUND(1008, "Vai trò không tồn tại", HttpStatus.BAD_REQUEST),
+    INVALID_REQUEST_STATUS(1009,"Invalid request status", HttpStatus.BAD_REQUEST),
+    REQUEST_NOT_FOUND(1010,"Request not found", HttpStatus.BAD_REQUEST),
+    PENDING_REQUEST_EXISTS(1011, "Bạn đã có một yêu cầu đang chờ xử lý", HttpStatus.BAD_REQUEST)
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
