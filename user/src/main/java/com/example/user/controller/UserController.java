@@ -98,5 +98,29 @@ public class UserController {
         return ApiResponRequest.<List<SellerRequestResponse>>builder()
                 .result(userService.getAllSellerRequests())
                 .build();
-}
+    }
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/ban/{userId}")
+    ApiResponRequest<String> banUser(@PathVariable String userId) {
+        userService.banUser(userId);
+        return ApiResponRequest.<String>builder()
+                .result("Tài khoản đã bị khóa")
+                .build();
+    }
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/banned")
+    ApiResponRequest<List<UserResponse>> getBannedUsers() {
+        return ApiResponRequest.<List<UserResponse>>builder()
+                .result(userService.getBannedUsers())
+                .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/unban/{userId}")
+    ApiResponRequest<String> unbanUser(@PathVariable String userId) {
+        userService.unbanUser(userId);
+        return ApiResponRequest.<String>builder()
+                .result("Tài khoản đã được gỡ ban")
+                .build();
+    }
 }

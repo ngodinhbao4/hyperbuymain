@@ -18,7 +18,8 @@ public enum ErrorCode {
     ROLE_NOT_FOUND(1008, "Vai trò không tồn tại", HttpStatus.BAD_REQUEST),
     INVALID_REQUEST_STATUS(1009,"Invalid request status", HttpStatus.BAD_REQUEST),
     REQUEST_NOT_FOUND(1010,"Request not found", HttpStatus.BAD_REQUEST),
-    PENDING_REQUEST_EXISTS(1011, "Bạn đã có một yêu cầu đang chờ xử lý", HttpStatus.BAD_REQUEST)
+    PENDING_REQUEST_EXISTS(1011, "Bạn đã có một yêu cầu đang chờ xử lý", HttpStatus.BAD_REQUEST),
+    ACCOUNT_BANNED(1012, "Tài khoản của bạn đã bị khóa", HttpStatus.BAD_REQUEST)
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
