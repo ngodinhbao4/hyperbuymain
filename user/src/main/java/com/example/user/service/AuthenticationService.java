@@ -69,16 +69,21 @@ public class AuthenticationService {
                 .build();
     }
 
-    public AuthenticationResponse authenticate(AuthenticationRequest request){
+        public AuthenticationResponse authenticate(AuthenticationRequest request) {
         var user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        if (user.isBanned()) {
+            log.warn("User {} is banned", request.getUsername());
+            throw new AppException(ErrorCode.ACCOUNT_BANNED);
+        }
 
         PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
         boolean authenticated = passwordEncoder.matches(request.getPassword(), user.getPassword());
 
-        if(!authenticated)
+        if (!authenticated)
             throw new AppException(ErrorCode.UNAUTHENTICATED);
-        
+    
         var token = generateToken(user);
         return AuthenticationResponse.builder()
             .token(token)

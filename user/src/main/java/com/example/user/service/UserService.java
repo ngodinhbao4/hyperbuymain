@@ -188,6 +188,44 @@ public class UserService {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
+    public void banUser(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+    
+        if (user.isBanned()) {
+            log.warn("User {} is already banned", user.getUsername());
+            return;
+        }
+
+        user.setBanned(true);
+        userRepository.save(user);
+        log.info("User {} has been banned", user.getUsername());
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<UserResponse> getBannedUsers() {
+        List<User> bannedUsers = userRepository.findByIsBannedTrue();
+        return bannedUsers.stream()
+                .map(userMapper::toUserResponse)
+                .toList();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    public void unbanUser(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+    
+        if (!user.isBanned()) {
+            log.warn("User {} is not banned", user.getUsername());
+            return;
+        }
+
+        user.setBanned(false);
+        userRepository.save(user);
+        log.info("User {} has been unbanned", user.getUsername());
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
     public void deleteUser(String userId) {
         userRepository.deleteById(userId);
     }
