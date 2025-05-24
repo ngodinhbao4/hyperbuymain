@@ -41,6 +41,8 @@ public class SecurityConfig {
             .cors(Customizer.withDefaults())
             .authorizeHttpRequests(request ->
                 request.requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS).permitAll()
+                        .requestMatchers("/users/**").authenticated()
+                        .requestMatchers("/users/request-seller").authenticated()
                         .anyRequest().authenticated());
 
                         httpSecurity.oauth2ResourceServer(oauth2 ->

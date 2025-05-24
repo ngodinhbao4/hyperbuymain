@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 
 import com.example.user.dto.request.RoleRequest;
 import com.example.user.dto.response.RoleResponse;
+import com.example.user.entity.Role;
+import com.example.user.exception.AppException;
+import com.example.user.exception.ErrorCode;
 import com.example.user.mapper.RoleMapper;
 import com.example.user.repository.PermissionRepository;
 import com.example.user.repository.RoleRepository;
@@ -45,4 +48,9 @@ public class RoleService {
     public void delete(String role){
         roleRepository.deleteById(role);
     }
+
+    public Role findByName(String name) {
+    return roleRepository.findByName(name)
+            .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
+}
 }

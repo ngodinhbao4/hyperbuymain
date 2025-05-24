@@ -5,11 +5,13 @@ import java.util.List;
 import com.example.user.dto.request.ApiResponRequest;
 import com.example.user.dto.request.UserCreationRequest;
 import com.example.user.dto.request.UserUpdateRequest;
+import com.example.user.dto.request.SellerRequest;
 import com.example.user.dto.response.UserResponse;
+import com.example.user.dto.response.SellerRequestResponse;
 import com.example.user.service.UserService;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
-
 
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -28,13 +30,14 @@ public class UserController {
     UserService userService;
 
     @PostMapping("/register")
-    ApiResponRequest<UserResponse> createUser(@RequestBody @Valid UserCreationRequest request){
+    ApiResponRequest<UserResponse> createUser(@RequestBody @Valid UserCreationRequest request) {
         return ApiResponRequest.<UserResponse>builder()
                 .result(userService.createUser(request))
                 .build();
     }
+
     @GetMapping
-    ApiResponRequest<List<UserResponse>> getUsers(){
+    ApiResponRequest<List<UserResponse>> getUsers() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
 
         log.info("Username: {}", authentication.getName());
@@ -46,31 +49,54 @@ public class UserController {
     }
 
     @GetMapping("/myInfo")
-    ApiResponRequest<UserResponse> getMyInfo(){
+    ApiResponRequest<UserResponse> getMyInfo() {
         return ApiResponRequest.<UserResponse>builder()
                 .result(userService.getMyInfo())
                 .build();
     }
-    
+
     @GetMapping("/{userId}")
-    ApiResponRequest<UserResponse> getUser(@PathVariable("userId") String userId){
+    ApiResponRequest<UserResponse> getUser(@PathVariable("userId") String userId) {
         return ApiResponRequest.<UserResponse>builder()
                 .result(userService.getUser(userId))
                 .build();
     }
-    
+
     @PutMapping("/{userId}")
-    ApiResponRequest<UserResponse> updateUser(@PathVariable String userId, @RequestBody @Valid UserUpdateRequest request){
+    ApiResponRequest<UserResponse> updateUser(@PathVariable String userId, @RequestBody @Valid UserUpdateRequest request) {
         return ApiResponRequest.<UserResponse>builder()
                 .result(userService.updateUser(userId, request))
                 .build();
     }
 
     @DeleteMapping("/{userId}")
-    ApiResponRequest<String> deleteUser(@PathVariable String userId){
+    ApiResponRequest<String> deleteUser(@PathVariable String userId) {
         userService.deleteUser(userId);
         return ApiResponRequest.<String>builder()
-                .result("User has been deleted")
+                .result("Người dùng đã bị xóa")
                 .build();
     }
+
+    @PostMapping("/request-seller")
+    ApiResponRequest<SellerRequestResponse> requestSeller(@RequestBody @Valid SellerRequest request) {
+        return ApiResponRequest.<SellerRequestResponse>builder()
+                .result(userService.requestSellerRole(request))
+                .build();
+    }
+
+    @PostMapping("/approve-seller/{requestId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    ApiResponRequest<UserResponse> approveSeller(@PathVariable String requestId) {
+        return ApiResponRequest.<UserResponse>builder()
+                .result(userService.approveSeller(requestId))
+                .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/seller-requests")
+    ApiResponRequest<List<SellerRequestResponse>> getAllSellerRequests() {
+        return ApiResponRequest.<List<SellerRequestResponse>>builder()
+                .result(userService.getAllSellerRequests())
+                .build();
+}
 }
