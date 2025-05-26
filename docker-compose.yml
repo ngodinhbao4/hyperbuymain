@@ -124,6 +124,33 @@ services:
     networks:
       - my-network
 
+  notificationservice:
+    build:
+      context: .
+      dockerfile: notification/Dockerfile
+    container_name: notification-service-app
+    ports:
+      - "8085:8085" # Map cổng 8085 host với 8080 container
+    environment:
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_notification_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=your_root_password
+      - USER_SERVICE_URL=http://userservice:8080
+      - JWT_SIGNER_KEY=${JWT_SIGNER_KEY:-!TJXchW5FLOeSBb63Kck+DFHTaRpWL4JUGcWFgWxUG5S1F/ly/LgJxHnMQaF46A/i}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    volumes:
+      - ./notification/credentials.json:/app/credentials.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      userservice:
+        condition: service_started
+    networks:
+      - my-network
+
   # Định nghĩa service cho cơ sở dữ liệu MySQL
   db:
     image: mysql:8.0
@@ -146,6 +173,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - my-network
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - my-network
 

@@ -11,6 +11,7 @@ public enum ErrorCodeOrder {
     UNCATEGORIZED_ORDER_EXCEPTION(4001, "Uncategorized order error", HttpStatus.INTERNAL_SERVER_ERROR),
     INVALID_ORDER_REQUEST(4002, "Invalid request data for order operation", HttpStatus.BAD_REQUEST),
     ORDER_VALIDATION_FAILED(4003, "Order data validation failed", HttpStatus.BAD_REQUEST),
+    USER_NOT_FOUND(4004,"Không thấy user", HttpStatus.BAD_REQUEST),
 
     // Lỗi liên quan đến nghiệp vụ Order (ví dụ: 41xx)
     ORDER_NOT_FOUND(4100, "Order not found", HttpStatus.NOT_FOUND),

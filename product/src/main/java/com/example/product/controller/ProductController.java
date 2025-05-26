@@ -14,6 +14,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.data.domain.Sort;
+
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/v1/products")
@@ -41,13 +44,12 @@ public class ProductController {
 
     @PutMapping(value = "/{id}/stock", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductResponse> updateStock(
-        @PathVariable Long id,
-        @Valid @RequestBody UpdateStockRequest updateStockRequest) {
-    ProductResponse updatedProduct = productService.updateStock(id, updateStockRequest.getChange());
-    return ResponseEntity.ok(updatedProduct);
-}
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateStockRequest updateStockRequest) {
+        ProductResponse updatedProduct = productService.updateStock(id, updateStockRequest.getChange());
+        return ResponseEntity.ok(updatedProduct);
+    }
 
-    // Các endpoint khác giữ nguyên
     @GetMapping("/{id}")
     public ResponseEntity<ProductResponse> getProductById(@PathVariable Long id) {
         ProductResponse product = productService.getProductById(id);
@@ -58,8 +60,10 @@ public class ProductController {
     public ResponseEntity<Page<ProductResponse>> findProducts(
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) String q,
-            @PageableDefault(size = 10, sort = "name") Pageable pageable) {
-        Page<ProductResponse> productPage = productService.findProducts(categoryId, q, pageable);
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @PageableDefault(size = 10, sort = "name", direction = Sort.Direction.ASC) Pageable pageable) {
+        Page<ProductResponse> productPage = productService.findProducts(categoryId, q, minPrice, maxPrice, pageable);
         return ResponseEntity.ok(productPage);
     }
 

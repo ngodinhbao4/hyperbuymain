@@ -26,9 +26,4 @@ public class ProductRequest {
     @NotNull(message = "Stock quantity cannot be null")
     @Min(value = 0, message = "Stock quantity cannot be negative")
     private Integer stockQuantity;
-
-    // REMOVED: imageUrl field.
-    // Image file will be handled as a MultipartFile in the Controller,
-    // and the Service will process it to store the filename/path in the Product entity.
-    // private String imageUrl;
 }

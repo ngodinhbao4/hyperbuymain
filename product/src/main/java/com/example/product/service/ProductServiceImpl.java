@@ -1,18 +1,11 @@
-package com.example.product.service; // Giả sử đây là package cho các lớp implement
-
-// LƯU Ý: Lớp Product Entity của bạn (com.example.product.entity.Product)
-// đã sử dụng trường `private String imageUrl;` và Lombok (@Getter, @Setter)
-// để tạo các phương thức `getImageUrl()` và `setImageUrl()`.
-// ProductRequest DTO của bạn sử dụng BigDecimal cho price.
-// ProductRequest DTO của bạn KHÔNG có trường isActive.
+package com.example.product.service;
 
 import com.example.product.dto.request.ProductRequest;
 import com.example.product.dto.response.ProductResponse;
-import com.example.product.entity.Product; // Hoặc com.example.product.entity.Product tùy theo cấu trúc của bạn
-import com.example.product.entity.Category; // Hoặc com.example.product.entity.Category
+import com.example.product.entity.Product;
+import com.example.product.entity.Category;
 import com.example.product.repository.ProductRepository;
 import com.example.product.repository.CategoryRepository;
-import com.example.product.service.ProductService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,13 +15,13 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils; // Vẫn cần cho cleanPath
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.math.BigDecimal; // Import BigDecimal
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -49,9 +42,8 @@ public class ProductServiceImpl implements ProductService {
     @Value("${app.static-resource.public-path-pattern}")
     private String publicPathPattern;
 
-    public ProductServiceImpl(ProductRepository productRepository,
-                              CategoryRepository categoryRepository,
-                              @Value("${app.upload.dir}") String uploadDirConfiguration) {
+    public ProductServiceImpl(ProductRepository productRepository, CategoryRepository categoryRepository,
+                            @Value("${app.upload.dir}") String uploadDirConfiguration) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.rootLocation = Paths.get(uploadDirConfiguration);
@@ -79,7 +71,6 @@ public class ProductServiceImpl implements ProductService {
         }
 
         String originalFilenameFromMultipart = file.getOriginalFilename();
-        // Sử dụng strip() thay cho StringUtils.trimWhitespace() (deprecated)
         if (originalFilenameFromMultipart == null || originalFilenameFromMultipart.strip().isEmpty()) {
             logger.warn("Tên file gốc từ MultipartFile là null hoặc rỗng. Không thể lưu file.");
             return null;
@@ -99,14 +90,14 @@ public class ProductServiceImpl implements ProductService {
             }
             Path destinationFile = this.rootLocation.resolve(uniqueFileName).normalize().toAbsolutePath();
             if (!destinationFile.getParent().equals(this.rootLocation.toAbsolutePath())) {
-                 throw new RuntimeException("Không thể lưu file ngoài thư mục hiện tại: " + originalFilename);
+                throw new RuntimeException("Không thể lưu file ngoài thư mục hiện tại: " + originalFilename);
             }
 
             try (InputStream inputStream = file.getInputStream()) {
                 Files.copy(inputStream, destinationFile, StandardCopyOption.REPLACE_EXISTING);
             }
             logger.info("Đã lưu file: {}", uniqueFileName);
-            return uniqueFileName; // Trả về tên file đã được tạo duy nhất (ví dụ: abc.jpg)
+            return uniqueFileName;
         } catch (IOException e) {
             logger.error("Lưu file {} thất bại: {}", uniqueFileName, e.getMessage());
             throw new RuntimeException("Lưu file " + originalFilename + " thất bại", e);
@@ -131,24 +122,22 @@ public class ProductServiceImpl implements ProductService {
         dto.setId(product.getId());
         dto.setName(product.getName());
         if (product.getDescription() != null) dto.setDescription(product.getDescription());
-        // ProductResponse.setPrice() mong muốn BigDecimal, Product.getPrice() cũng là BigDecimal
         if (product.getPrice() != null) dto.setPrice(product.getPrice());
         if (product.getSku() != null) dto.setSku(product.getSku());
         dto.setStockQuantity(product.getStockQuantity());
         dto.setCategoryId(product.getCategory() != null ? product.getCategory().getId() : null);
-        dto.setActive(product.isActive()); // isActive từ Product Entity
+        dto.setActive(product.isActive());
 
         String storedImageIdentifier = product.getImageUrl();
-
         if (storedImageIdentifier != null && !storedImageIdentifier.isEmpty()) {
             String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
             String cleanPublicPath = publicPathPattern.endsWith("/**")
                     ? publicPathPattern.substring(0, publicPathPattern.length() - 3)
                     : publicPathPattern;
             if (cleanPublicPath.endsWith("/")) {
-                 cleanPublicPath = cleanPublicPath.substring(0, cleanPublicPath.length() -1);
+                cleanPublicPath = cleanPublicPath.substring(0, cleanPublicPath.length() - 1);
             }
-             if (!cleanPublicPath.startsWith("/")) {
+            if (!cleanPublicPath.startsWith("/")) {
                 cleanPublicPath = "/" + cleanPublicPath;
             }
             String fullImageUrl = baseUrl + cleanPublicPath + "/" + storedImageIdentifier;
@@ -167,16 +156,13 @@ public class ProductServiceImpl implements ProductService {
         Product product = new Product();
         product.setName(productRequest.getName());
         product.setDescription(productRequest.getDescription());
-        // ProductRequest.getPrice() là BigDecimal, gán trực tiếp
         if (productRequest.getPrice() != null) {
             product.setPrice(productRequest.getPrice());
         }
         product.setSku(productRequest.getSku());
-        // ProductRequest.getStockQuantity() là Integer, Product.setStockQuantity() mong muốn int
         if (productRequest.getStockQuantity() != null) {
             product.setStockQuantity(productRequest.getStockQuantity());
         }
-
 
         if (productRequest.getCategoryId() != null) {
             Category category = categoryRepository.findById(productRequest.getCategoryId())
@@ -184,8 +170,8 @@ public class ProductServiceImpl implements ProductService {
             product.setCategory(category);
         }
 
-        product.setActive(true); // Mặc định active là true khi tạo mới
-        product.setDeleted(false); // Mặc định isDeleted là false khi tạo mới
+        product.setActive(true);
+        product.setDeleted(false);
         product.setImageUrl(storedFileName);
 
         Product savedProduct = productRepository.save(product);
@@ -203,12 +189,8 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ProductResponse> findProducts(Long categoryId, String nameQuery, Pageable pageable) {
-        Page<Product> productPage;
-        // Dựa trên các trường is_active và is_deleted của Product entity
-        // Ví dụ: productRepository.findByCategoryIdAndNameContainingIgnoreCaseAndIsActiveTrueAndIsDeletedFalse(...)
-        productPage = productRepository.findAll(pageable); // Placeholder
-
+    public Page<ProductResponse> findProducts(Long categoryId, String nameQuery, BigDecimal minPrice, BigDecimal maxPrice, Pageable pageable) {
+        Page<Product> productPage = productRepository.searchProducts(categoryId, nameQuery, minPrice, maxPrice, pageable);
         List<ProductResponse> productResponses = productPage.getContent().stream()
                 .map(this::convertToProductResponseWithImageUrl)
                 .collect(Collectors.toList());
@@ -229,22 +211,13 @@ public class ProductServiceImpl implements ProductService {
 
         product.setName(productRequest.getName());
         product.setDescription(productRequest.getDescription());
-        // ProductRequest.getPrice() là BigDecimal, gán trực tiếp
         if (productRequest.getPrice() != null) {
             product.setPrice(productRequest.getPrice());
         }
         product.setSku(productRequest.getSku());
-        // ProductRequest.getStockQuantity() là Integer, Product.setStockQuantity() mong muốn int
         if (productRequest.getStockQuantity() != null) {
             product.setStockQuantity(productRequest.getStockQuantity());
         }
-
-        // LOẠI BỎ CẬP NHẬT `isActive` TỪ ProductRequest VÌ ProductRequest KHÔNG CÓ TRƯỜNG NÀY
-        // Trạng thái active sẽ được quản lý qua activateProduct/deactivateProduct
-        // if (productRequest.getIsActive() != null) { // Dòng này đã bị xóa
-        //      product.setActive(productRequest.getIsActive()); // Dòng này đã bị xóa
-        // }
-
 
         if (productRequest.getCategoryId() != null) {
             Category category = categoryRepository.findById(productRequest.getCategoryId())
@@ -263,10 +236,10 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public void deleteProduct(Long id) {
         Product product = productRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + id));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + id));
         productRepository.delete(product);
         logger.info("Đã xóa sản phẩm với ID: {}", id);
-        }
+    }
 
     @Override
     @Transactional
@@ -308,6 +281,6 @@ public class ProductServiceImpl implements ProductService {
     @Transactional(readOnly = true)
     public Page<ProductResponse> findMyProducts(Long categoryId, String nameQuery, Pageable pageable) {
         logger.warn("findMyProducts chưa được triển khai đầy đủ với ngữ cảnh người dùng, hoạt động giống findProducts.");
-        return findProducts(categoryId, nameQuery, pageable);
+        return findProducts(categoryId, nameQuery, null, null, pageable);
     }
 }

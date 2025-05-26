@@ -18,7 +18,6 @@ import org.springframework.web.cors.CorsConfigurationSource; // Đảm bảo imp
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
-import java.util.List; // Sử dụng List cho setAllowedOriginPatterns
 
 @Configuration
 @EnableWebSecurity
@@ -33,6 +32,7 @@ public class SecurityConfigProduct {
     // publicImagesPathPattern đã được xử lý riêng, có thể không cần đưa vào đây nữa
     // nếu PUBLIC_ENDPOINTS chỉ dành cho các API endpoints khác.
     private final String[] PUBLIC_ENDPOINTS = {
+            "/api/v1/**",
             "/api/v1/products/**",    // Bao gồm tất cả HTTP methods cho products (cân nhắc chỉ cho phép GET nếu không cần xác thực cho POST/PUT/DELETE)
             "/api/v1/categories/**",  // Bao gồm tất cả HTTP methods cho categories (tương tự, cân nhắc chỉ GET)
             // "/product-images/**" // Đã được xử lý bởi publicImagesPathPattern, có thể bỏ ở đây để tránh trùng lặp và rõ ràng hơn
@@ -53,6 +53,7 @@ public class SecurityConfigProduct {
                                 // Cho phép GET request đến đường dẫn phục vụ ảnh
                                 .requestMatchers(HttpMethod.GET, publicImagesPathPattern).permitAll()
                                 .requestMatchers(HttpMethod.PUT, publicImagesPathPattern).permitAll()
+                                .requestMatchers(HttpMethod.GET, "api/v1/products").permitAll()
                                 // .requestMatchers(publicImagesPathPattern).permitAll() // Dòng này thừa nếu đã có dòng trên và publicImagesPathPattern chỉ dành cho ảnh
                                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll() // Cho phép các endpoint công khai khác
                                 .anyRequest().authenticated() // Tất cả các yêu cầu khác cần được xác thực
