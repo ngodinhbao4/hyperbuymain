@@ -64,10 +64,15 @@ public class UserService {
         return userRepository.findAll().stream().map(userMapper::toUserResponse).toList();
     }
 
-    @PostAuthorize("returnObject.username == authentication.name")
+    @PostAuthorize("returnObject.username == authentication.name or hasRole('ADMIN') or hasRole('SELLER')")
     public UserResponse getUser(String id) {
         return userMapper.toUserResponse(userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng")));
+    }
+
+    public UserResponse getUserByUsername(String username) {
+        return userMapper.toUserResponse(userRepository.findByUsername(username)
+            .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với username: " + username)));
     }
 
     public UserResponse getMyInfo() {
@@ -100,48 +105,46 @@ public class UserService {
 
     @PreAuthorize("hasRole('USER')")
     public SellerRequestResponse requestSellerRole(SellerRequest request) {
-    String currentUsername = SecurityContextHolder.getContext().getAuthentication().getName();
-    log.info("Current username from SecurityContext: {}", currentUsername);
+        String currentUsername = SecurityContextHolder.getContext().getAuthentication().getName();
+        log.info("Current username from SecurityContext: {}", currentUsername);
 
-    if (currentUsername == null || currentUsername.isEmpty()) {
-        log.error("No authenticated user found in SecurityContext");
-        throw new AppException(ErrorCode.UNAUTHENTICATED);
+        if (currentUsername == null || currentUsername.isEmpty()) {
+            log.error("No authenticated user found in SecurityContext");
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        User user = userRepository.findByUsername(currentUsername)
+                .orElseThrow(() -> {
+                    log.error("User not found with username: {}", currentUsername);
+                    return new AppException(ErrorCode.USER_NOT_EXISTED);
+                });
+
+        List<SellerRequestEntity> pendingRequests = sellerRequestRepository.findPendingByUser(user);
+        if (!pendingRequests.isEmpty()) {
+            log.warn("User {} already has a pending seller request", currentUsername);
+            throw new AppException(ErrorCode.PENDING_REQUEST_EXISTS);
+        }
+
+        SellerRequestEntity sellerRequest = SellerRequestEntity.builder()
+                .user(user)
+                .storeName(request.getStoreName())
+                .businessLicense(request.getBusinessLicense())
+                .status("PENDING")
+                .build();
+
+        sellerRequest = sellerRequestRepository.save(sellerRequest);
+        log.info("Saved SellerRequestEntity with id: {}, user_id: {}", sellerRequest.getId(), user.getId());
+
+        return SellerRequestResponse.builder()
+                .id(sellerRequest.getId())
+                .userId(user.getId())
+                .username(user.getUsername())
+                .storeName(sellerRequest.getStoreName())
+                .businessLicense(sellerRequest.getBusinessLicense())
+                .status(sellerRequest.getStatus())
+                .build();
     }
 
-    User user = userRepository.findByUsername(currentUsername)
-            .orElseThrow(() -> {
-                log.error("User not found with username: {}", currentUsername);
-                return new AppException(ErrorCode.USER_NOT_EXISTED);
-            });
-
-    // Kiểm tra xem người dùng đã có yêu cầu PENDING hay chưa
-    List<SellerRequestEntity> pendingRequests = sellerRequestRepository.findPendingByUser(user);
-    if (!pendingRequests.isEmpty()) {
-        log.warn("User {} already has a pending seller request", currentUsername);
-        throw new AppException(ErrorCode.PENDING_REQUEST_EXISTS);
-    }
-
-    SellerRequestEntity sellerRequest = SellerRequestEntity.builder()
-            .user(user)
-            .storeName(request.getStoreName())
-            .businessLicense(request.getBusinessLicense())
-            .status("PENDING")
-            .build();
-
-    sellerRequest = sellerRequestRepository.save(sellerRequest);
-    log.info("Saved SellerRequestEntity with id: {}, user_id: {}", sellerRequest.getId(), user.getId());
-
-    return SellerRequestResponse.builder()
-            .id(sellerRequest.getId())
-            .userId(user.getId())
-            .username(user.getUsername())
-            .storeName(sellerRequest.getStoreName())
-            .businessLicense(sellerRequest.getBusinessLicense())
-            .status(sellerRequest.getStatus())
-            .build();
-}
-
-    
     public UserResponse approveSeller(String requestId) {
         SellerRequestEntity request = sellerRequestRepository.findById(requestId)
                 .orElseThrow(() -> new AppException(ErrorCode.REQUEST_NOT_FOUND));
@@ -191,7 +194,7 @@ public class UserService {
     public void banUser(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
-    
+
         if (user.isBanned()) {
             log.warn("User {} is already banned", user.getUsername());
             return;
@@ -214,7 +217,7 @@ public class UserService {
     public void unbanUser(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
-    
+
         if (!user.isBanned()) {
             log.warn("User {} is not banned", user.getUsername());
             return;

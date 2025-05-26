@@ -43,6 +43,8 @@ public class SecurityConfig {
                 request.requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS).permitAll()
                         .requestMatchers("/users/**").authenticated()
                         .requestMatchers("/users/request-seller").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/users/username/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/users/{userId}").permitAll()
                         .anyRequest().authenticated());
 
                         httpSecurity.oauth2ResourceServer(oauth2 ->
