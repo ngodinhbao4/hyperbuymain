@@ -1,6 +1,6 @@
 package com.example.notification.controller;
 
-import com.example.notification.dto.request.CreateNotificationRequest;
+import com.example.notification.dto.request.NotificationRequest;
 import com.example.notification.dto.response.ApiResponRequest;
 import com.example.notification.entity.Notification;
 import com.example.notification.service.NotificationService;
@@ -17,20 +17,26 @@ import java.util.List;
 public class NotificationController {
     private final NotificationService notificationService;
 
-    // Lấy danh sách thông báo của user
-    @GetMapping("/{userId}")
-    public ResponseEntity<List<Notification>> getNotifications(@PathVariable String userId) {
-        return ResponseEntity.ok(notificationService.getUserNotifications(userId));
+    @RequestMapping(value = "/admin/send", method = RequestMethod.OPTIONS)
+    public ResponseEntity<Void> handleOptions() {
+        return ResponseEntity.ok().build();
     }
 
-    // Admin tạo thông báo
     @PostMapping("/admin/send")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponRequest<String> sendAdminNotification(@RequestBody CreateNotificationRequest request, @RequestHeader("Authorization") String authorizationHeader) {
+    public ApiResponRequest<String> sendAdminNotification(@RequestBody NotificationRequest request, 
+                                                        @RequestHeader("Authorization") String authorizationHeader) {
         notificationService.createAdminNotification(request.getUserId(), request.getMessage(), authorizationHeader);
         return ApiResponRequest.<String>builder()
                 .code(1000)
                 .result("Notification sent successfully")
+                .build();
+    }
+
+    @GetMapping("/{userId}")
+    public ApiResponRequest<List<Notification>> getUserNotifications(@PathVariable("userId") String userId) {
+        return ApiResponRequest.<List<Notification>>builder()
+                .code(1000)
+                .result(notificationService.getUserNotifications(userId))
                 .build();
     }
 
