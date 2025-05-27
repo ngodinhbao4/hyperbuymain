@@ -7,6 +7,7 @@ import com.example.notification.dto.response.ApiResponRequest;
 import com.example.notification.entity.Notification;
 import com.example.notification.repository.NotificationRepository;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 
 import org.slf4j.Logger;
@@ -55,8 +56,12 @@ public class NotificationService {
                 messageContent = String.format("Đơn hàng #%s hiện đang %s", event.getId(), event.getStatus().toLowerCase());
             }
 
-            logger.debug("Sending push notification for userId: {}", userId);
-            sendPushNotification(userId, messageContent);
+            try {
+                sendPushNotification(userId, messageContent);
+            } catch (Exception e) {
+                logger.error("Failed to send push notification for userId: {}. Error: {}", userId, e.getMessage(), e);
+                // Tiếp tục lưu thông báo dù push notification thất bại
+            }
 
             Notification notification = new Notification();
             notification.setUserId(userId);
@@ -88,8 +93,13 @@ public class NotificationService {
             logger.debug("Validated userId: {}", validatedUserId);
 
             // Gửi push notification
-            logger.debug("Sending push notification for userId: {}", validatedUserId);
-            sendPushNotification(validatedUserId, message);
+            try {
+                logger.debug("Sending push notification for userId: {}", validatedUserId);
+                sendPushNotification(validatedUserId, message);
+            } catch (Exception e) {
+                logger.error("Failed to send push notification for userId: {}. Error: {}", validatedUserId, e.getMessage(), e);
+                // Tiếp tục lưu thông báo dù push notification thất bại
+            }
 
             // Lưu thông báo
             Notification notification = new Notification();
@@ -117,20 +127,25 @@ public class NotificationService {
     }
 
     // Lấy danh sách thông báo của user
-    public List<Notification> getUserNotifications(String userId) {
-        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
-    }
-
     private void sendPushNotification(String userId, String content) {
         try {
             Message message = Message.builder()
-                    .putData("title", "Order Update")
+                    .putData("title", "Admin Notification")
                     .putData("body", content)
                     .setTopic(userId)
                     .build();
-            firebaseMessaging.send(message);
+            String response = firebaseMessaging.send(message);
+            logger.debug("Push notification sent successfully for userId: {}, response: {}", userId, response);
+        } catch (FirebaseMessagingException e) {
+            logger.error("Firebase error for userId: {}. Code: {}, Message: {}", userId, e.getErrorCode(), e.getMessage());
+            throw new RuntimeException("Failed to send push notification", e);
         } catch (Exception e) {
+            logger.error("Unexpected error sending push notification for userId: {}. Error: {}", userId, e.getMessage());
             throw new RuntimeException("Failed to send push notification", e);
         }
+    }
+
+    public List<Notification> getUserNotifications(String userId) {
+        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
 }
