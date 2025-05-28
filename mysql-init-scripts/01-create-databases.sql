@@ -18,10 +18,5 @@ CREATE DATABASE IF NOT EXISTS hyperbuy_payment_db CHARACTER SET utf8mb4 COLLATE 
 -- Tạo database cho NotificationService (nếu chưa tồn tại)
 CREATE DATABASE IF NOT EXISTS hyperbuy_notification_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-
--- (Tùy chọn) Bạn có thể muốn tạo một user riêng cho các ứng dụng thay vì dùng root
--- CREATE USER 'appuser'@'%' IDENTIFIED BY 'apppassword';
--- GRANT ALL PRIVILEGES ON hyperbuy_user_db.* TO 'appuser'@'%';
--- GRANT ALL PRIVILEGES ON hyperbuy_product_db.* TO 'appuser'@'%';
--- GRANT ALL PRIVILEGES ON hyperbuy_cart_db.* TO 'appuser'@'%';
--- FLUSH PRIVILEGES;
+-- Tạo database cho ChatService (nếu chưa tồn tại)
+CREATE DATABASE IF NOT EXISTS hyperbuy_chat_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

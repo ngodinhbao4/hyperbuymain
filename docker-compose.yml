@@ -151,6 +151,28 @@ services:
     networks:
       - my-network
 
+  chatservice:
+    build:
+      context: .
+      dockerfile: chat/Dockerfile
+    container_name: chat-service-app
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_chat_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=your_root_password
+      - USER_SERVICE_URL=http://userservice:8080
+      - JWT_SIGNER_KEY=${JWT_SIGNER_KEY:-!TJXchW5FLOeSBb63Kck+DFHTaRpWL4JUGcWFgWxUG5S1F/ly/LgJxHnMQaF46A/i}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+    depends_on:
+      db:
+        condition: service_healthy
+      userservice:
+        condition: service_started
+    networks:
+      - my-network
+
   # Định nghĩa service cho cơ sở dữ liệu MySQL
   db:
     image: mysql:8.0
