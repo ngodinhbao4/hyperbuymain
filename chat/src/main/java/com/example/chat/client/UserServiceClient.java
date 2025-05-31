@@ -31,7 +31,7 @@ public class UserServiceClient {
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", "Bearer " + token);
             HttpEntity<String> entity = new HttpEntity<>(headers);
-            String url = userServiceUrl + "/user    /users/" + userId;
+            String url = userServiceUrl + "/user/users/" + userId;
             LOGGER.info("Calling UserService: " + url);
             restTemplate.exchange(url, HttpMethod.GET, entity, ApiResponse.class);
             LOGGER.info("User ID " + userId + " validated successfully");

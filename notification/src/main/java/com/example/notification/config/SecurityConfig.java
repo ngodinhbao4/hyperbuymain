@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/notificaton/admin/**").permitAll()
                 .requestMatchers("/notifications/{userId}").permitAll()
                 .requestMatchers("/notifications/admin/**").permitAll()
+                .requestMatchers(HttpMethod.PATCH, "/notifications/**").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
@@ -48,8 +49,9 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.addAllowedOrigin("*");
         configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "http://127.0.0.1:5500"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("PATCH", "GET", "POST", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

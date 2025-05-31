@@ -151,4 +151,20 @@ public class CategoryServiceImpl implements CategoryService {
         category.setDescription(request.getDescription());
         return category;
     }
+
+    @Override
+    @Transactional
+    public void permanentlyDeleteCategory(Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+
+        // Kiểm tra xem category có sản phẩm active và chưa bị xóa hay không
+        boolean hasProducts = productRepository.existsByCategoryIdAndIsDeletedFalseAndIsActiveTrue(id);
+        if (hasProducts) {
+            throw new AppException(ErrorCode.CATEGORY_HAS_PRODUCTS);
+        }
+
+        // Xóa vĩnh viễn category
+        categoryRepository.delete(category);
+    }
 }

@@ -26,4 +26,6 @@ public class ProductRequest {
     @NotNull(message = "Stock quantity cannot be null")
     @Min(value = 0, message = "Stock quantity cannot be negative")
     private Integer stockQuantity;
+
+    private String storeId;
 }

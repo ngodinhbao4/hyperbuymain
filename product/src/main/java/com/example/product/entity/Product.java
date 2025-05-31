@@ -37,6 +37,9 @@ public class Product {
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
 
+    @Column(name = "store_id", nullable = false) // Thêm trường này
+    private String storeId;
+
     @Column(name = "price", nullable = false, precision = 15, scale = 2)
     private BigDecimal price;
 

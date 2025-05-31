@@ -202,6 +202,12 @@ public class OrderServiceImpl implements OrderService {
         orderItem.setProductId(product.getId());
         orderItem.setQuantity(quantity);
         orderItem.setPrice(product.getPrice());
+        String imageUrl = product.getImageUrl();
+        // Thay productservice bằng localhost trong môi trường dev
+        if (imageUrl != null && imageUrl.contains("productservice:8081")) {
+        imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
+        }
+        orderItem.setImageUrl(product.getImageUrl()); // Gán imageUrl từ ProductDTO
         orderItem.setProductName(product.getName());
         orderItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(quantity)));
         return orderItem;
@@ -352,6 +358,11 @@ public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, Stri
         dto.setProductName(item.getProductName());
         dto.setQuantity(item.getQuantity());
         dto.setPrice(item.getPrice());
+        String imageUrl = item.getImageUrl();
+        if (imageUrl != null && imageUrl.contains("productservice:8081")) {
+            imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
+        }
+        dto.setImageUrl(item.getImageUrl());
         dto.setSubtotal(item.getSubtotal());
         return dto;
     }

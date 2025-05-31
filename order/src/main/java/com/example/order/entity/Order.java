@@ -33,7 +33,7 @@ public class Order {
     @Column(nullable = false)
     private OrderStatus status;
 
-    @Column(nullable = false, precision = 10, scale = 2)
+    @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
     @Column(length = 255)

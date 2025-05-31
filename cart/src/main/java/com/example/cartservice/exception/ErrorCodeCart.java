@@ -13,11 +13,11 @@ public enum ErrorCodeCart {
 
     // Lỗi liên quan đến Cart
     CART_NOT_FOUND(3100, "Cart not found for the user", HttpStatus.NOT_FOUND),
-    PRODUCT_NOT_FOUND_IN_CART(3101, "Product not found in the cart", HttpStatus.NOT_FOUND),
+    PRODUCT_NOT_FOUND_IN_CART(3101, "Không tìm thấy sản phẩm trong giỏ", HttpStatus.NOT_FOUND),
 
     // Lỗi liên quan đến Product (khi tương tác với ProductService hoặc kiểm tra sản phẩm)
-    PRODUCT_NOT_AVAILABLE(2100, "Product is not available", HttpStatus.BAD_REQUEST), // Ví dụ: hết hàng, không tồn tại
-    INSUFFICIENT_STOCK(2101, "Insufficient stock for product", HttpStatus.BAD_REQUEST),
+    PRODUCT_NOT_AVAILABLE(2100, "Sản phẩm không tồn tại", HttpStatus.BAD_REQUEST), // Ví dụ: hết hàng, không tồn tại
+    INSUFFICIENT_STOCK(2101, "Sản phẩm không đủ hàng tồn kho", HttpStatus.BAD_REQUEST),
     PRODUCT_SERVICE_UNREACHABLE(2102, "Product service is unreachable or returned an error", HttpStatus.SERVICE_UNAVAILABLE),
 
     // Lỗi liên quan đến User (khi tương tác với UserService)
