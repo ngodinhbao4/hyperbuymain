@@ -11,4 +11,5 @@ public interface CategoryService {
     CategoryResponse updateCategory(Long id, CategoryRequest categoryRequest);
     void deleteCategory(Long id); // Soft delete
     void activateCategory(Long id);
+    void permanentlyDeleteCategory(Long id); // Hard delete
 }

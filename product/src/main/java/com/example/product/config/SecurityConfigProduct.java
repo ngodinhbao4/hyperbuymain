@@ -52,6 +52,7 @@ public class SecurityConfigProduct {
                         request
                                 // Cho phép GET request đến đường dẫn phục vụ ảnh
                                 .requestMatchers(HttpMethod.GET, publicImagesPathPattern).permitAll()
+                                .requestMatchers("/api/v1/products/store/**").permitAll() // Cho phép truy cập công khai
                                 .requestMatchers(HttpMethod.PUT, publicImagesPathPattern).permitAll()
                                 .requestMatchers(HttpMethod.GET, "api/v1/products").permitAll()
                                 // .requestMatchers(publicImagesPathPattern).permitAll() // Dòng này thừa nếu đã có dòng trên và publicImagesPathPattern chỉ dành cho ảnh

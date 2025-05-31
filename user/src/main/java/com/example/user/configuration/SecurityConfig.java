@@ -45,6 +45,7 @@ public class SecurityConfig {
                         .requestMatchers("/users/request-seller").authenticated()
                         .requestMatchers(HttpMethod.GET, "/users/username/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/users/{userId}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/users/store/**").permitAll()
                         .anyRequest().authenticated());
 
                         httpSecurity.oauth2ResourceServer(oauth2 ->

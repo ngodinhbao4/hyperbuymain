@@ -1,7 +1,9 @@
 package com.example.product.controller;
 
 import com.example.product.dto.request.CategoryRequest;
+import com.example.product.dto.response.ApiResponse;
 import com.example.product.dto.response.CategoryResponse;
+import com.example.product.exception.AppException;
 import com.example.product.service.CategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -56,5 +58,23 @@ public class CategoryController {
     public ResponseEntity<Void> activateCategory(@PathVariable Long id) {
         categoryService.activateCategory(id);
         return ResponseEntity.ok().build(); // Trả về 200 OK (hoặc 204 No Content cũng được)
+    }
+
+    @DeleteMapping("/{id}/permanent")
+    public ResponseEntity<ApiResponse<Void>> permanentlyDeleteCategory(@PathVariable Long id) {
+        try {
+            categoryService.permanentlyDeleteCategory(id);
+            ApiResponse<Void> response = ApiResponse.<Void>builder()
+                    .code(1000)
+                    .message("Xóa vĩnh viễn danh mục thành công")
+                    .build();
+            return ResponseEntity.ok(response);
+        } catch (AppException e) {
+            ApiResponse<Void> errorResponse = ApiResponse.<Void>builder()
+                    .code(e.getErrorCode().getCode())
+                    .message(e.getMessage())
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        }
     }
 }

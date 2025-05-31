@@ -8,6 +8,7 @@ import com.example.user.dto.request.UserUpdateRequest;
 import com.example.user.dto.request.SellerRequest;
 import com.example.user.dto.response.UserResponse;
 import com.example.user.dto.response.SellerRequestResponse;
+import com.example.user.dto.response.StoreResponse;
 import com.example.user.service.UserService;
 
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -127,6 +128,26 @@ public class UserController {
         userService.unbanUser(userId);
         return ApiResponRequest.<String>builder()
                 .result("Tài khoản đã được gỡ ban")
+                .build();
+    }
+
+    @GetMapping("/{userId}/store")
+    public ApiResponRequest<StoreResponse> getStoreByUserId(
+            @PathVariable String userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ApiResponRequest.<StoreResponse>builder()
+                .result(userService.getStoreByUserId(userId, page, size))
+                .build();
+    }
+
+    @GetMapping("/store/{storeId}")
+    public ApiResponRequest<StoreResponse> getStoreByStoreId(
+            @PathVariable String storeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ApiResponRequest.<StoreResponse>builder()
+                .result(userService.getStoreByStoreId(storeId, page, size))
                 .build();
     }
 }

@@ -1,21 +1,26 @@
 package com.example.user.service;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
-import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.example.user.repository.SellerProfileRepository;
+import com.example.user.client.ProductServiceClient;
 import com.example.user.dto.request.UserCreationRequest;
 import com.example.user.dto.request.UserUpdateRequest;
 import com.example.user.dto.request.SellerRequest;
 import com.example.user.dto.response.UserResponse;
 import com.example.user.dto.response.SellerRequestResponse;
+import com.example.user.dto.response.StoreResponse;
 import com.example.user.entity.Role;
+import com.example.user.entity.SellerProfile;
 import com.example.user.entity.User;
 import com.example.user.entity.SellerRequestEntity;
 import com.example.user.enums.Roles;
@@ -24,6 +29,9 @@ import com.example.user.exception.ErrorCode;
 import com.example.user.mapper.UserMapper;
 import com.example.user.repository.RoleRepository;
 import com.example.user.repository.UserRepository;
+
+import jakarta.transaction.Transactional;
+
 import com.example.user.repository.SellerRequestRepository;
 
 import lombok.AccessLevel;
@@ -42,6 +50,8 @@ public class UserService {
     PasswordEncoder passwordEncoder;
     RoleService roleService;
     SellerRequestRepository sellerRequestRepository;
+    SellerProfileRepository sellerProfileRepository; // Thêm field này
+    ProductServiceClient productServiceClient; // Thêm field này
 
     public UserResponse createUser(UserCreationRequest request) {
         if (userRepository.existsByUsername(request.getUsername()))
@@ -144,14 +154,26 @@ public class UserService {
                 .build();
     }
 
+    @Transactional
     public UserResponse approveSeller(String requestId) {
+        log.info("Phê duyệt yêu cầu người bán với requestId: {}", requestId);
         SellerRequestEntity request = sellerRequestRepository.findById(requestId)
-                .orElseThrow(() -> new AppException(ErrorCode.REQUEST_NOT_FOUND));
+                .orElseThrow(() -> {
+                    log.error("Không tìm thấy yêu cầu với ID: {}", requestId);
+                    return new AppException(ErrorCode.REQUEST_NOT_FOUND);
+                });
+
         if (!request.getStatus().equals("PENDING")) {
+            log.warn("Yêu cầu với ID {} không ở trạng thái PENDING: {}", requestId, request.getStatus());
             throw new AppException(ErrorCode.INVALID_REQUEST_STATUS);
         }
 
         User user = request.getUser();
+        if (user == null) {
+            log.error("Không tìm thấy người dùng cho yêu cầu với ID: {}", requestId);
+            throw new AppException(ErrorCode.USER_NOT_EXISTED);
+        }
+
         Role sellerRole = roleService.findByName(Roles.SELLER.name());
         Set<Role> roles = user.getRole();
         if (roles == null) {
@@ -161,10 +183,25 @@ public class UserService {
             roles.add(sellerRole);
             user.setRole(roles);
             userRepository.save(user);
+            log.info("Đã gán vai trò SELLER cho người dùng: {}", user.getUsername());
+        }
+
+        SellerProfile sellerProfile = SellerProfile.builder()
+                .storeName(request.getStoreName())
+                .businessLicense(request.getBusinessLicense())
+                .user(user)
+                .build();
+        try {
+            sellerProfileRepository.save(sellerProfile);
+            log.info("Đã lưu SellerProfile cho người dùng: {}, storeId: {}", user.getUsername(), sellerProfile.getId());
+        } catch (Exception e) {
+            log.error("Lỗi khi lưu SellerProfile cho người dùng: {}, lỗi: {}", user.getUsername(), e.getMessage());
+            throw new RuntimeException("Không thể lưu thông tin người bán", e);
         }
 
         request.setStatus("APPROVED");
         sellerRequestRepository.save(request);
+        log.info("Đã cập nhật trạng thái yêu cầu với ID {} thành APPROVED", requestId);
 
         return userMapper.toUserResponse(user);
     }
@@ -230,5 +267,72 @@ public class UserService {
     @PreAuthorize("hasRole('ADMIN')")
     public void deleteUser(String userId) {
         userRepository.deleteById(userId);
+    }
+
+    public StoreResponse    getStoreByUserId(String userId, int page, int size) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        SellerProfile sellerProfile = sellerProfileRepository.findByUserUsername(user.getUsername())
+                .orElseThrow(() -> new AppException(ErrorCode.SELLER_PROFILE_NOT_FOUND));
+
+        List<Map<String, Object>> products = productServiceClient.getProductsByStoreId(sellerProfile.getId(), page, size);
+        products.forEach(product -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> sellerInfo = (Map<String, Object>) product.get("sellerInfo");
+            if (sellerInfo != null) {
+                sellerInfo.put("storeName", sellerProfile.getStoreName());
+            }
+        });
+
+        StoreResponse response = new StoreResponse();
+        response.setStoreId(sellerProfile.getId());
+        response.setStoreName(sellerProfile.getStoreName());
+        response.setBusinessLicense(sellerProfile.getBusinessLicense());
+        response.setUserId(user.getId());
+        response.setUsername(user.getUsername());
+        response.setProducts(products);
+
+        return response;
+    }
+
+    public StoreResponse getStoreByStoreId(String storeId, int page, int size) {
+        log.info("Lấy thông tin cửa hàng với storeId: {}", storeId);
+        SellerProfile sellerProfile = sellerProfileRepository.findById(storeId)
+                .orElseThrow(() -> {
+                    log.error("Không tìm thấy cửa hàng với storeId: {}", storeId);
+                    return new AppException(ErrorCode.SELLER_PROFILE_NOT_FOUND);
+                });
+
+        User user = sellerProfile.getUser();
+        if (user == null) {
+            log.error("Không tìm thấy người dùng liên kết với storeId: {}", storeId);
+            throw new AppException(ErrorCode.USER_NOT_EXISTED);
+        }
+
+        List<Map<String, Object>> products = new ArrayList<>();
+        try {
+            products = productServiceClient.getProductsByStoreId(storeId, page, size);
+            products.forEach(product -> {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> sellerInfo = (Map<String, Object>) product.get("sellerInfo");
+                if (sellerInfo != null) {
+                    sellerInfo.put("storeName", sellerProfile.getStoreName());
+                }
+            });
+        } catch (Exception e) {
+            log.error("Lỗi khi lấy danh sách sản phẩm cho storeId: {}, lỗi: {}", storeId, e.getMessage());
+            // Trả về danh sách rỗng nếu không lấy được sản phẩm
+        }
+
+        StoreResponse response = new StoreResponse();
+        response.setStoreId(sellerProfile.getId());
+        response.setStoreName(sellerProfile.getStoreName());
+        response.setBusinessLicense(sellerProfile.getBusinessLicense());
+        response.setUserId(user.getId());
+        response.setUsername(user.getUsername());
+        response.setProducts(products);
+
+        return response;
     }
 }
