@@ -20,6 +20,7 @@ CREATE DATABASE IF NOT EXISTS hyperbuy_notification_db CHARACTER SET utf8mb4 COL
 
 -- Tạo database cho ChatService (nếu chưa tồn tại)
 CREATE DATABASE IF NOT EXISTS hyperbuy_chat_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+<<<<<<< HEAD
 
 -- Tạo database cho RecommendationService (nếu chưa tồn tại)    
 CREATE DATABASE IF NOT EXISTS hyperbuy_recommendation_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -33,3 +34,5 @@ CREATE TABLE IF NOT EXISTS recommendation (
   createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+=======
+>>>>>>> origin/main
