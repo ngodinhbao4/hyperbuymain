@@ -1,38 +1,30 @@
--- File: mysql-init-scripts/01-create-databases.sql
+-- =====================================================
+-- 🗄️ Khởi tạo toàn bộ database cho hệ thống HyperBuy
+-- =====================================================
 
--- Tạo database cho UserService (nếu chưa tồn tại)
+-- Tạo database cho UserService
 CREATE DATABASE IF NOT EXISTS hyperbuy_user_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Tạo database cho ProductService (nếu chưa tồn tại)
+-- Tạo database cho ProductService
 CREATE DATABASE IF NOT EXISTS hyperbuy_product_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Tạo database cho CartService (nếu chưa tồn tại)
+-- Tạo database cho CartService
 CREATE DATABASE IF NOT EXISTS hyperbuy_cart_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Tạo database cho OrderService (nếu chưa tồn tại)
+-- Tạo database cho OrderService
 CREATE DATABASE IF NOT EXISTS hyperbuy_order_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Tạo database cho PaymentService (nếu chưa tồn tại)
+-- Tạo database cho PaymentService
 CREATE DATABASE IF NOT EXISTS hyperbuy_payment_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Tạo database cho NotificationService (nếu chưa tồn tại)
+-- Tạo database cho NotificationService
 CREATE DATABASE IF NOT EXISTS hyperbuy_notification_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Tạo database cho ChatService (nếu chưa tồn tại)
+-- Tạo database cho ChatService
 CREATE DATABASE IF NOT EXISTS hyperbuy_chat_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-<<<<<<< HEAD
 
--- Tạo database cho RecommendationService (nếu chưa tồn tại)    
-CREATE DATABASE IF NOT EXISTS hyperbuy_recommendation_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE hyperbuy_recommendation_db;
+-- Tạo database cho MiniGameService
+CREATE DATABASE IF NOT EXISTS hyperbuy_minigame_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS recommendation (
-  recid BIGINT AUTO_INCREMENT PRIMARY KEY,
-  userId BIGINT NOT NULL,
-  productId BIGINT NOT NULL,
-  score DECIMAL(5,2) DEFAULT 0,
-  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-=======
->>>>>>> origin/main
+-- Tạo database cho VoucherService
+CREATE DATABASE IF NOT EXISTS hyperbuy_voucher_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

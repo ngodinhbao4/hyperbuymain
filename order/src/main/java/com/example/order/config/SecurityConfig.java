@@ -77,6 +77,7 @@ public class SecurityConfig {
                 // Nếu cho admin: .requestMatchers(HttpMethod.GET, API_ORDERS_BASE_PATH + "/user/{userId}").hasRole("ADMIN")
                 // Nếu cho user xem của chính mình, sẽ dùng @PreAuthorize ở controller để so sánh userId trong path với userId trong token.
                 .requestMatchers(HttpMethod.GET, API_ORDERS_BASE_PATH + "/user/{userId}").authenticated()
+                .requestMatchers("/api/v1/internal/orders/has-purchased").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
