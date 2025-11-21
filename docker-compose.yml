@@ -180,31 +180,42 @@ services:
     networks:
       - my-network
 
-  recommendationservice:
+  minigame-service:
     build:
       context: .
-      dockerfile: recommendation/Dockerfile
-    container_name: recommendation-service-app
+      dockerfile: minigame/Dockerfile
+    container_name: minigame-service-app
     ports:
       - "8087:8087"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_recommendation_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_minigame_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=baotrong
-      - USER_SERVICE_URL=http://userservice:8080
-      - PRODUCT_SERVICE_URL=http://productservice:8081
+      - VOUCHER_SERVICE_URL=http://voucher-service:8089/voucher/vouchers
       - TZ=Asia/Ho_Chi_Minh
     depends_on:
-      db:
-        condition: service_healthy
-      userservice:
-        condition: service_started
-      productservice:
-        condition: service_started
+      - db
+      - voucher-service
     networks:
       - my-network
 
-
+  voucher-service:
+    build:
+      context: .
+      dockerfile: voucher/Dockerfile
+    container_name: voucher-service
+    ports:
+        - "8089:8089"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_voucher_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=baotrong
+      - TZ=Asia/Ho_Chi_Minh
+    depends_on:
+      - db
+    networks:
+      - my-network
+      
   # Định nghĩa service cho cơ sở dữ liệu MySQL
   db:
     image: mysql:8.0
