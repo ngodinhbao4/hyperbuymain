@@ -90,4 +90,23 @@ public class RatingController {
 
         return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping("/my/{ratingId}")
+        public ResponseEntity<ApiResponse<Void>> deleteMyRating(
+                @PathVariable Long productId,
+                @PathVariable Long ratingId,
+                @AuthenticationPrincipal Jwt jwt
+        ) {
+        String username = jwt.getSubject();
+
+                ratingService.deleteMyRating(productId, ratingId, username);
+
+            ApiResponse<Void> response = ApiResponse.<Void>builder()
+                    .code(1000)
+                    .message("Xóa đánh giá thành công")
+                        .build();
+
+            return ResponseEntity.ok(response);
+        }               
+
 }
