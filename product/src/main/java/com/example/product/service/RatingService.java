@@ -15,4 +15,6 @@ public interface RatingService {
     RatingSummaryResponse getRatingSummaryForProduct(Long productId);
 
     List<RatingResponse> getRatingsByUser(String username);
+
+    void deleteMyRating(Long productId, Long ratingId, String username);
 }

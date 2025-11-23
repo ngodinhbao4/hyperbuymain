@@ -10,8 +10,13 @@ import com.example.product.repository.ProductRepository;
 import com.example.product.repository.RatingRepository;
 import com.example.product.service.RatingService;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+
+
 
 import java.util.IntSummaryStatistics;
 import java.util.List;
@@ -126,4 +131,23 @@ public class RatingServiceImpl implements RatingService {
                         .build())
                 .collect(Collectors.toList());
     }
+
+    @Override
+        @Transactional
+        public void deleteMyRating(Long productId, Long ratingId, String username) {
+            Rating rating = ratingRepository.findById(ratingId)
+                    .orElseThrow(() -> new RuntimeException("Đánh giá không tồn tại"));
+
+            // ✅ Kiểm tra đánh giá có thuộc đúng sản phẩm không
+            if (!rating.getProduct().getId().equals(productId)) {
+                throw new RuntimeException("Đánh giá không thuộc sản phẩm này");
+            }
+
+            // ✅ Chỉ cho phép chính chủ xóa
+        if (!rating.getUsername().equals(username)) {
+                throw new AccessDeniedException("Bạn không có quyền xóa đánh giá này");
+        }
+
+            ratingRepository.delete(rating);
+        }
 }
