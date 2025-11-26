@@ -55,4 +55,21 @@ public class AiRecommendationController {
 
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/guest")
+public ResponseEntity<ApiResponse<List<ProductResponse>>> getGuestRecommendations(
+        @RequestParam(defaultValue = "12") int limit
+) {
+    List<ProductResponse> products = 
+            aiRecommendationService.getRecommendationsForGuest(limit);
+
+    ApiResponse<List<ProductResponse>> response = ApiResponse.<List<ProductResponse>>builder()
+            .code(1000)
+            .message("Gợi ý AI cho khách chưa đăng nhập")
+            .result(products)
+            .build();
+
+    return ResponseEntity.ok(response);
+}
+
 }

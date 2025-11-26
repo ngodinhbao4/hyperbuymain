@@ -4,8 +4,19 @@ import pymysql
 from datetime import datetime
 
 # =============================
-# 1. THÔNG TIN MYSQL (theo docker-compose)
+# 0. HẰNG SỐ TRỌNG SỐ & KẾT NỐI
 # =============================
+
+# Trọng số cho từng loại tín hiệu
+VIEW_WEIGHT   = 0.7   # lượt xem (log)
+BUY_WEIGHT    = 2.0   # mua hàng
+RATING_WEIGHT = 1.2   # rating user nhập
+BASE_RATING   = 3.0   # coi 3 sao là mức trung bình
+
+# Ngưỡng lọc nhiễu (điểm rating tối thiểu để giữ lại)
+MIN_SIGNAL_SCORE = 0.5
+
+# Thông tin MySQL (theo docker-compose)
 MYSQL_HOST = "localhost"
 MYSQL_PORT = 3307            # vì Docker map 3307:3306
 MYSQL_USER = "root"
@@ -76,7 +87,6 @@ def load_data():
         GROUP BY username, product_id;
     """
 
-    # ❌ bỏ pd.read_sql
     with conn.cursor() as cur:
         cur.execute(sql)
         rows = cur.fetchall()
@@ -93,17 +103,16 @@ def load_data():
         print("Không có dòng (username, product_id) nào → không train được.")
         return pd.DataFrame(columns=["username", "product_id", "rating"])
 
-    # clean như trước (không ép product_id sang numeric nếu bạn để BIGINT / LONG)
+    # --- Làm sạch dữ liệu cơ bản ---
     df = df.dropna(subset=["username", "product_id"])
     df["username"] = df["username"].astype(str).str.strip()
-    # nếu product_id là số:
     df["product_id"] = pd.to_numeric(df["product_id"], errors="coerce")
     df = df.dropna(subset=["product_id"])
     df["product_id"] = df["product_id"].astype(int)
 
     df["view_count"] = pd.to_numeric(df["view_count"], errors="coerce").fillna(0.0)
     df["buy_count"] = pd.to_numeric(df["buy_count"], errors="coerce").fillna(0.0)
-    df["rating_value"] = pd.to_numeric(df["rating_value"], errors="coerce").fillna(3.0)
+    df["rating_value"] = pd.to_numeric(df["rating_value"], errors="coerce").fillna(BASE_RATING)
     df["rating_value"] = df["rating_value"].clip(1.0, 5.0)
 
     distinct_pairs = len(df[["username", "product_id"]].drop_duplicates())
@@ -113,19 +122,36 @@ def load_data():
         print("Sau khi clean vẫn không còn cặp (user, product) nào → dừng.")
         return pd.DataFrame(columns=["username", "product_id", "rating"])
 
+    # --- TÍNH ĐIỂM TỔNG HỢP (RATING) ---
     score = (
-        0.3 * np.log1p(df["view_count"]) +
-        1.0 * df["buy_count"] +
-        0.8 * (df["rating_value"] - 3.0)
+        VIEW_WEIGHT   * np.log1p(df["view_count"]) +
+        BUY_WEIGHT    * df["buy_count"] +
+        RATING_WEIGHT * (df["rating_value"] - BASE_RATING)
     )
+
     score = score.clip(1.0, 5.0)
     df["rating"] = score
 
+    # --- LỌC NHIỄU ---
+    # Bỏ các dòng gần như không có tín hiệu (view=0, buy=0, rating_value=BASE_RATING và score quá thấp)
+    mask_signal = (
+        (df["view_count"] > 0) |
+        (df["buy_count"] > 0) |
+        (df["rating_value"] != BASE_RATING)
+    )
+    df = df[mask_signal]
+    df = df[df["rating"] > MIN_SIGNAL_SCORE]
+
+    print("Sau khi lọc nhiễu, số dòng còn lại:", len(df))
+
+    if df.empty:
+        print("Sau khi lọc không còn dòng nào → không train được.")
+        return pd.DataFrame(columns=["username", "product_id", "rating"])
+
     df_train = df[["username", "product_id", "rating"]].copy()
-    print("Total user-product rows:", len(df_train))
+    print("Total user-product rows dùng để train:", len(df_train))
 
     return df_train
-
 
 
 # =============================
@@ -190,7 +216,10 @@ def build_train_test_tuples(df_train, user_to_idx, prod_to_idx, test_ratio=0.2):
 # 5. MATRIX FACTORIZATION (SGD)
 # =============================
 def train_mf(train_data, num_users, num_items,
-             n_factors=20, n_epochs=25, lr=0.01, reg=0.02):
+             n_factors=30,    # tăng nhẹ số chiều ẩn
+             n_epochs=30,     # thêm vài epoch
+             lr=0.01,
+             reg=0.03):       # regularization cao hơn chút để đỡ overfit
     P = 0.1 * np.random.randn(num_users, n_factors)  # user factors
     Q = 0.1 * np.random.randn(num_items, n_factors)  # item factors
 
@@ -357,11 +386,7 @@ def main():
     P, Q, bu, bi, mu = train_mf(
         train_data=train_data,
         num_users=num_users,
-        num_items=num_items,
-        n_factors=20,
-        n_epochs=25,
-        lr=0.01,
-        reg=0.02
+        num_items=num_items
     )
 
     print("=== EVALUATE ON TEST SET ===")

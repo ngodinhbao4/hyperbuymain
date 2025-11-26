@@ -164,17 +164,31 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private ProductDTO fetchProductFromService(Long productId, String authorizationHeader) {
-        try {
-            ProductDTO product = productServiceClient.getProductById(productId, authorizationHeader);
-            if (product == null) {
-                throw new OrderException(ErrorCodeOrder.PRODUCT_NOT_FOUND_FOR_ORDER, "Product with ID " + productId + " not found.");
-            }
-            return product;
-        } catch (FeignException e) {
-            logger.error("FeignException fetching product {}: {}", productId, e.getMessage(), e);
-            throw new OrderException(ErrorCodeOrder.PRODUCT_SERVICE_UNREACHABLE_FOR_ORDER, "Could not fetch product " + productId, e);
+    try {
+        ApiResponRequest<ProductDTO> response =
+                productServiceClient.getProductById(productId, authorizationHeader);
+
+        if (response == null || response.getResult() == null) {
+            throw new OrderException(
+                ErrorCodeOrder.PRODUCT_NOT_FOUND_FOR_ORDER,
+                "Product with ID " + productId + " not found."
+            );
         }
+
+        ProductDTO product = response.getResult();
+        logger.info("Fetched product from product-service: id={}, name={}, active={}, stock={}",
+                product.getId(), product.getName(), product.isActive(), product.getStockQuantity());
+
+        return product;
+    } catch (FeignException e) {
+        logger.error("FeignException fetching product {}: {}", productId, e.getMessage(), e);
+        throw new OrderException(
+            ErrorCodeOrder.PRODUCT_SERVICE_UNREACHABLE_FOR_ORDER,
+            "Could not fetch product " + productId,
+            e
+        );
     }
+}
 
     private void validateProductAvailability(ProductDTO product, int requestedQuantity) {
         if (!product.isActive() || product.isDeleted()) {
@@ -197,21 +211,23 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderItem createOrderItem(ProductDTO product, int quantity, Order order) {
-        OrderItem orderItem = new OrderItem();
-        orderItem.setOrder(order);
-        orderItem.setProductId(product.getId());
-        orderItem.setQuantity(quantity);
-        orderItem.setPrice(product.getPrice());
-        String imageUrl = product.getImageUrl();
-        // Thay productservice bằng localhost trong môi trường dev
-        if (imageUrl != null && imageUrl.contains("productservice:8081")) {
+    OrderItem orderItem = new OrderItem();
+    orderItem.setOrder(order);
+    orderItem.setProductId(product.getId());
+    orderItem.setQuantity(quantity);
+    orderItem.setPrice(product.getPrice());
+
+    String imageUrl = product.getImageUrl();
+    if (imageUrl != null && imageUrl.contains("productservice:8081")) {
         imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
-        }
-        orderItem.setImageUrl(product.getImageUrl()); // Gán imageUrl từ ProductDTO
-        orderItem.setProductName(product.getName());
-        orderItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(quantity)));
-        return orderItem;
     }
+    orderItem.setImageUrl(imageUrl); // dùng imageUrl đã replace
+
+    orderItem.setProductName(product.getName());
+    orderItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(quantity)));
+    return orderItem;
+}
+
 
     private Order saveOrderToDatabase(Order order) {
         logger.info("Saving order for user: {}", order.getUserId());
@@ -353,19 +369,21 @@ public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, Stri
     }
 
     private OrderItemResponse mapOrderItemToResponse(OrderItem item) {
-        OrderItemResponse dto = new OrderItemResponse();
-        dto.setProductId(item.getProductId());
-        dto.setProductName(item.getProductName());
-        dto.setQuantity(item.getQuantity());
-        dto.setPrice(item.getPrice());
-        String imageUrl = item.getImageUrl();
-        if (imageUrl != null && imageUrl.contains("productservice:8081")) {
-            imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
-        }
-        dto.setImageUrl(item.getImageUrl());
-        dto.setSubtotal(item.getSubtotal());
-        return dto;
+    OrderItemResponse dto = new OrderItemResponse();
+    dto.setProductId(item.getProductId());
+    dto.setProductName(item.getProductName());
+    dto.setQuantity(item.getQuantity());
+    dto.setPrice(item.getPrice());
+
+    String imageUrl = item.getImageUrl();
+    if (imageUrl != null && imageUrl.contains("productservice:8081")) {
+        imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
     }
+    dto.setImageUrl(imageUrl); // dùng imageUrl đã sửa
+    dto.setSubtotal(item.getSubtotal());
+    return dto;
+}
+
 
     private void mapAddressDtoToOrder(AddressDTO addressDTO, Order order, boolean isShipping) {
         if (addressDTO == null) return;

@@ -9,4 +9,6 @@ public interface AiRecommendationRepository extends JpaRepository<AiRecommendati
 
     // Lấy top N theo username, sort descending theo predicted_score
     List<AiRecommendation> findTop50ByUsernameOrderByPredictedScoreDesc(String username);
+
+    List<AiRecommendation> findTop200ByOrderByPredictedScoreDesc();
 }

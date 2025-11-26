@@ -23,30 +23,36 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponse> getRecommendationsForUser(String username, int limit) {
-        // 1. Lấy danh sách gợi ý AI từ bảng ai_recommendations
+
+    // 1. Lấy top 50 sản phẩm có score cao nhất
         List<AiRecommendation> recs =
                 aiRecommendationRepository.findTop50ByUsernameOrderByPredictedScoreDesc(username);
 
+// ⭐ Fallback nếu user không có dữ liệu AI
         if (recs.isEmpty()) {
-            return Collections.emptyList();
+            return getRecommendationsForGuest(limit);   // ✔ ĐÚNG
         }
 
+// 🔥 Shuffle nhẹ để thay đổi kết quả mỗi lần load
+        Collections.shuffle(recs);
+
+// 2. Giới hạn số lượng trả về
         if (limit > 0 && recs.size() > limit) {
             recs = recs.subList(0, limit);
         }
 
-        // 2. Lấy danh sách productId
+// 3. Lấy productId
         List<Long> productIds = recs.stream()
                 .map(AiRecommendation::getProductId)
                 .collect(Collectors.toList());
 
-        // 3. Query product từ DB
+// 4. Query Product từ DB
         List<Product> products = productRepository.findAllById(productIds);
 
         Map<Long, Product> productMap = products.stream()
                 .collect(Collectors.toMap(Product::getId, p -> p));
 
-        // 4. Map sang ProductResponse theo đúng DTO của bạn
+// 5. Convert sang ProductResponse theo thứ tự recs
         List<ProductResponse> result = new ArrayList<>();
 
         for (AiRecommendation rec : recs) {
@@ -85,4 +91,34 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
 
         return res;
     }
+
+    @Override
+@Transactional(readOnly = true)
+public List<ProductResponse> getRecommendationsForGuest(int limit) {
+
+    // Lấy tất cả recommendation & sort theo score giảm dần
+    List<AiRecommendation> recs =
+            aiRecommendationRepository.findTop200ByOrderByPredictedScoreDesc();
+
+    if (recs.isEmpty()) {
+        return Collections.emptyList();
+    }
+
+    // Shuffle để tạo cảm giác mới
+    Collections.shuffle(recs);
+
+    // Giới hạn số lượng
+    recs = recs.subList(0, Math.min(limit, recs.size()));
+
+    List<Long> productIds = recs.stream()
+            .map(AiRecommendation::getProductId)
+            .toList();
+
+    List<Product> products = productRepository.findAllById(productIds);
+
+    return products.stream()
+            .map(this::toProductResponse)
+            .toList();
+}
+
 }
