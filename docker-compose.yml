@@ -90,6 +90,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=baotrong
       - PRODUCT_SERVICE_URL=http://productservice:8081
       - CART_SERVICE_URL=http://cartservice:8082
+      - VOUCHER_SERVICE_URL=http://voucher-service:8089
       - JWT_SIGNER_KEY=${JWT_SIGNER_KEY:-!TJXchW5FLOeSBb63Kck+DFHTaRpWL4JUGcWFgWxUG5S1F/ly/LgJxHnMQaF46A/i}
       - TZ=Asia/Ho_Chi_Minh
       # - SPRING_PROFILES_ACTIVE=docker

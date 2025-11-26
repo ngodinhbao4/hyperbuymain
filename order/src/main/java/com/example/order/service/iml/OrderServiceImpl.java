@@ -21,6 +21,7 @@ import com.example.order.service.client.CartServiceClient;
 import com.example.order.service.client.ProductServiceClient;
 import com.example.order.service.client.UpdateStockRequest;
 import com.example.order.service.client.UserServiceClient;
+import com.example.order.service.client.VoucherServiceClient;
 
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -45,55 +46,66 @@ public class OrderServiceImpl implements OrderService {
     private final ProductServiceClient productServiceClient;
     private final CartServiceClient cartServiceClient;
     private final RabbitTemplate rabbitTemplate;
-    private final UserServiceClient userServiceClient; // Thêm FeignClient
+    private final UserServiceClient userServiceClient;
+    private final VoucherServiceClient voucherServiceClient;
 
     @Override
     @Transactional
     public OrderResponse createOrder(CreateOrderRequest createOrderRequest, String authorizationHeader) {
-        logger.info("Attempting to create order for user ID: {}, Authorization: {}", 
-            createOrderRequest.getUserId(), authorizationHeader);
+        logger.info("Attempting to create order for user ID: {}, Authorization: {}",
+                createOrderRequest.getUserId(), authorizationHeader);
 
-        // Lấy username và UUID từ UserService
-        String username = createOrderRequest.getUserId(); // baodh
+        // 1) Lấy username & UUID từ user-service
+        String username = createOrderRequest.getUserId(); // ví dụ: admin
         logger.debug("Fetching user for username: {}", username);
-        ApiResponRequest<UserResponse> response;
+        ApiResponRequest<UserResponse> userRes;
         try {
-            response = userServiceClient.getUserByUsername(username, authorizationHeader);
-            if (response.getResult() == null || response.getResult().getId() == null || response.getResult().getUsername() == null) {
+            userRes = userServiceClient.getUserByUsername(username, authorizationHeader);
+            if (userRes.getResult() == null
+                    || userRes.getResult().getId() == null
+                    || userRes.getResult().getUsername() == null) {
                 logger.error("UserResponse, id, or username is null for username: {}", username);
-                throw new OrderException(ErrorCodeOrder.USER_NOT_FOUND, "User not found for username: " + username);
+                throw new OrderException(
+                        ErrorCodeOrder.USER_NOT_FOUND,
+                        "User not found for username: " + username
+                );
             }
         } catch (FeignException e) {
             logger.error("Failed to fetch user for username: {}. Error: {}", username, e.getMessage(), e);
-            throw new OrderException(ErrorCodeOrder.USER_NOT_FOUND, "User not found for username: " + username, e);
+            throw new OrderException(
+                    ErrorCodeOrder.USER_NOT_FOUND,
+                    "User not found for username: " + username,
+                    e
+            );
         }
-        String userIdForOrder = response.getResult().getUsername(); // Lưu username (baodh)
-        String userIdForNotification = response.getResult().getId(); // UUID cho thông báo
-        logger.debug("Retrieved username: {} and UUID: {} for username: {}", userIdForOrder, userIdForNotification, username);
 
-        // Lấy giỏ hàng từ cart-service
+        String userIdForOrder = userRes.getResult().getUsername(); // lưu username
+        String userIdForNotification = userRes.getResult().getId(); // UUID (dùng cho voucher + noti)
+        logger.debug("Retrieved username: {} and UUID: {} for username: {}",
+                userIdForOrder, userIdForNotification, username);
+
+        // 2) Lấy giỏ hàng từ cart-service
         CartDTO cart = fetchCartFromService(userIdForNotification, authorizationHeader);
-        logger.info("Cart fetched for user {}: {} items", userIdForNotification, cart.getItems().size());
-
-        // Kiểm tra giỏ hàng
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             logger.warn("Cart is empty for user ID: {}. Cannot create order.", userIdForNotification);
             throw new OrderException(ErrorCodeOrder.EMPTY_CART_FOR_ORDER);
         }
+        logger.info("Cart fetched for user {}: {} items", userIdForNotification, cart.getItems().size());
 
-        // Lấy thông tin sản phẩm và xác thực tính khả dụng
         List<CartItemDTO> cartItems = cart.getItems();
+
+        // 3) Kiểm tra từng sản phẩm
         for (CartItemDTO item : cartItems) {
             logger.info("Processing cart item: productId={}, quantity={}", item.getProductId(), item.getQuantity());
             ProductDTO product = fetchProductFromService(item.getProductId(), authorizationHeader);
             validateProductAvailability(product, item.getQuantity());
         }
 
-        // Khởi tạo đơn hàng
+        // 4) Khởi tạo Order
         Order order = initializeOrder(createOrderRequest, cartItems);
-        order.setUserId(userIdForOrder); // Lưu username thay vì UUID
+        order.setUserId(userIdForOrder); // lưu username
 
-        // Gán thông tin địa chỉ và phương thức thanh toán
+        // Gán địa chỉ & payment từ request (phòng khi initializeOrder chưa set đầy đủ)
         if (createOrderRequest.getShippingAddress() != null) {
             order.setShippingAddressLine1(createOrderRequest.getShippingAddress().getAddressLine1());
             order.setShippingAddressLine2(createOrderRequest.getShippingAddress().getAddressLine2());
@@ -110,92 +122,167 @@ public class OrderServiceImpl implements OrderService {
         }
         order.setPaymentMethod(createOrderRequest.getPaymentMethod());
 
-        // Tạo các mục đơn hàng
+        // 5) Tạo OrderItem từ CartItem
         List<OrderItem> orderItems = cartItems.stream()
-            .map(item -> {
-                ProductDTO product = fetchProductFromService(item.getProductId(), authorizationHeader);
-                return createOrderItem(product, item.getQuantity(), order);
-            })
-            .collect(Collectors.toList());
+                .map(item -> {
+                    ProductDTO product = fetchProductFromService(item.getProductId(), authorizationHeader);
+                    return createOrderItem(product, item.getQuantity(), order);
+                })
+                .collect(Collectors.toList());
         order.setItems(orderItems);
 
-        // Tính totalAmount
-        BigDecimal totalAmount = orderItems.stream()
-            .map(OrderItem::getSubtotal)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new OrderException(ErrorCodeOrder.INVALID_ORDER_REQUEST, "Total amount must be greater than zero.");
-        }
-        order.setTotalAmount(totalAmount);
-        logger.info("Calculated totalAmount for user {}: {}", userIdForOrder, totalAmount);
+        // 6) Tính tổng trước giảm
+        BigDecimal totalAmountBeforeDiscount = orderItems.stream()
+                .map(OrderItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Lưu đơn hàng
+        if (totalAmountBeforeDiscount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new OrderException(
+                    ErrorCodeOrder.INVALID_ORDER_REQUEST,
+                    "Total amount must be greater than zero."
+            );
+        }
+
+        // 7) Áp dụng voucher (nếu có)
+        String voucherCode = createOrderRequest.getVoucherCode();
+        BigDecimal discountAmount = BigDecimal.ZERO;
+
+        if (voucherCode != null && !voucherCode.isBlank()) {
+            try {
+                discountAmount = voucherServiceClient.applyVoucher(
+                        userIdForNotification,   // UUID dùng cho user_voucher.user_id
+                        voucherCode,
+                        totalAmountBeforeDiscount,
+                        authorizationHeader
+                );
+            } catch (Exception e) {
+                logger.error("Failed to apply voucher {} for user {}: {}",
+                        voucherCode, userIdForNotification, e.getMessage(), e);
+                // ở đây mình cho throw để FE biết có vấn đề với voucher
+                throw new OrderException(
+                        ErrorCodeOrder.INVALID_ORDER_REQUEST,
+                        "Cannot apply voucher: " + voucherCode,
+                        e
+                );
+            }
+        }
+
+        if (discountAmount == null) {
+            discountAmount = BigDecimal.ZERO;
+        }
+
+        // 8) Tính tổng sau giảm (không âm)
+        BigDecimal finalAmount = totalAmountBeforeDiscount.subtract(discountAmount);
+        if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            finalAmount = BigDecimal.ZERO;
+        }
+
+        // 9) Gán vào Order
+        order.setTotalAmount(totalAmountBeforeDiscount);
+        order.setDiscountAmount(discountAmount);
+        order.setFinalAmount(finalAmount);
+        order.setVoucherCode(
+                (voucherCode != null && !voucherCode.isBlank()) ? voucherCode : null
+        );
+
+        logger.info("Order discount for user {}: total={}, discount={}, final={}, voucher={}",
+                userIdForOrder, totalAmountBeforeDiscount, discountAmount, finalAmount, voucherCode);
+
+        // 10) Lưu đơn
         Order savedOrder = saveOrderToDatabase(order);
 
-        // Giảm tồn kho
+        // 11) Trừ tồn kho
         decreaseProductStock(savedOrder, authorizationHeader);
 
-        // Xóa giỏ hàng
+        // 12) Xóa giỏ hàng
         clearUserCart(userIdForNotification, savedOrder.getId(), authorizationHeader);
 
-        // Xác nhận đơn hàng
+        // 13) Xác nhận đơn
         confirmOrder(savedOrder);
 
-        // Gửi OrderEvent với UUID để gửi thông báo
+        // 14) Nếu có voucher & đã giảm > 0 → đánh dấu đã dùng
+        if (savedOrder.getVoucherCode() != null
+                && savedOrder.getDiscountAmount() != null
+                && savedOrder.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+            try {
+                voucherServiceClient.markVoucherUsed(
+                        userIdForNotification,
+                        savedOrder.getVoucherCode(),
+                        authorizationHeader
+                );
+            } catch (Exception e) {
+                logger.error("Failed to mark voucher {} as used for user {}: {}",
+                        savedOrder.getVoucherCode(), userIdForNotification, e.getMessage(), e);
+                // không throw nữa để đơn hàng vẫn thành công
+            }
+        }
+
+        // 15) Gửi event RabbitMQ
         OrderEvent event = new OrderEvent();
         event.setId(savedOrder.getId());
-        event.setUserId(userIdForNotification); // Sử dụng UUID
+        event.setUserId(userIdForNotification);
         event.setStatus(savedOrder.getStatus().name());
         event.setAuthorizationHeader(authorizationHeader);
         logger.debug("Sending OrderEvent for order creation: {}", event);
         rabbitTemplate.convertAndSend("order_notifications", event);
 
-        // Tạo OrderResponse
         return mapOrderToResponseDTO(savedOrder);
     }
+
     private CartDTO fetchCartFromService(String userId, String authorizationHeader) {
         logger.info("Fetching cart for user {}", userId);
         try {
+            // hiện tại CartServiceImpl bên bạn đang dùng token để lấy current user
             return cartServiceClient.getCartByUserId(authorizationHeader);
         } catch (Exception e) {
             logger.error("Failed to fetch cart for user {}: {}", userId, e.getMessage(), e);
-            throw new OrderException(ErrorCodeOrder.CART_SERVICE_UNREACHABLE, "Could not fetch cart for user " + userId, e);
+            throw new OrderException(
+                    ErrorCodeOrder.CART_SERVICE_UNREACHABLE,
+                    "Could not fetch cart for user " + userId,
+                    e
+            );
         }
     }
 
     private ProductDTO fetchProductFromService(Long productId, String authorizationHeader) {
-    try {
-        ApiResponRequest<ProductDTO> response =
-                productServiceClient.getProductById(productId, authorizationHeader);
+        try {
+            ApiResponRequest<ProductDTO> response =
+                    productServiceClient.getProductById(productId, authorizationHeader);
 
-        if (response == null || response.getResult() == null) {
+            if (response == null || response.getResult() == null) {
+                throw new OrderException(
+                        ErrorCodeOrder.PRODUCT_NOT_FOUND_FOR_ORDER,
+                        "Product with ID " + productId + " not found."
+                );
+            }
+
+            ProductDTO product = response.getResult();
+            logger.info("Fetched product from product-service: id={}, name={}, active={}, stock={}",
+                    product.getId(), product.getName(), product.isActive(), product.getStockQuantity());
+
+            return product;
+        } catch (FeignException e) {
+            logger.error("FeignException fetching product {}: {}", productId, e.getMessage(), e);
             throw new OrderException(
-                ErrorCodeOrder.PRODUCT_NOT_FOUND_FOR_ORDER,
-                "Product with ID " + productId + " not found."
+                    ErrorCodeOrder.PRODUCT_SERVICE_UNREACHABLE_FOR_ORDER,
+                    "Could not fetch product " + productId,
+                    e
             );
         }
-
-        ProductDTO product = response.getResult();
-        logger.info("Fetched product from product-service: id={}, name={}, active={}, stock={}",
-                product.getId(), product.getName(), product.isActive(), product.getStockQuantity());
-
-        return product;
-    } catch (FeignException e) {
-        logger.error("FeignException fetching product {}: {}", productId, e.getMessage(), e);
-        throw new OrderException(
-            ErrorCodeOrder.PRODUCT_SERVICE_UNREACHABLE_FOR_ORDER,
-            "Could not fetch product " + productId,
-            e
-        );
     }
-}
 
     private void validateProductAvailability(ProductDTO product, int requestedQuantity) {
         if (!product.isActive() || product.isDeleted()) {
-            throw new OrderException(ErrorCodeOrder.PRODUCT_UNAVAILABLE_FOR_ORDER, "Product " + product.getId() + " is unavailable.");
+            throw new OrderException(
+                    ErrorCodeOrder.PRODUCT_UNAVAILABLE_FOR_ORDER,
+                    "Product " + product.getId() + " is unavailable."
+            );
         }
         if (product.getStockQuantity() < requestedQuantity) {
-            throw new OrderException(ErrorCodeOrder.INSUFFICIENT_STOCK_FOR_ORDER, "Insufficient stock for product " + product.getId());
+            throw new OrderException(
+                    ErrorCodeOrder.INSUFFICIENT_STOCK_FOR_ORDER,
+                    "Insufficient stock for product " + product.getId()
+            );
         }
     }
 
@@ -211,23 +298,21 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderItem createOrderItem(ProductDTO product, int quantity, Order order) {
-    OrderItem orderItem = new OrderItem();
-    orderItem.setOrder(order);
-    orderItem.setProductId(product.getId());
-    orderItem.setQuantity(quantity);
-    orderItem.setPrice(product.getPrice());
+        OrderItem orderItem = new OrderItem();
+        orderItem.setOrder(order);
+        orderItem.setProductId(product.getId());
+        orderItem.setQuantity(quantity);
+        orderItem.setPrice(product.getPrice());
 
-    String imageUrl = product.getImageUrl();
-    if (imageUrl != null && imageUrl.contains("productservice:8081")) {
-        imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
+        String imageUrl = product.getImageUrl();
+        if (imageUrl != null && imageUrl.contains("productservice:8081")) {
+            imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
+        }
+        orderItem.setImageUrl(imageUrl);
+        orderItem.setProductName(product.getName());
+        orderItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(quantity)));
+        return orderItem;
     }
-    orderItem.setImageUrl(imageUrl); // dùng imageUrl đã replace
-
-    orderItem.setProductName(product.getName());
-    orderItem.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(quantity)));
-    return orderItem;
-}
-
 
     private Order saveOrderToDatabase(Order order) {
         logger.info("Saving order for user: {}", order.getUserId());
@@ -248,7 +333,11 @@ public class OrderServiceImpl implements OrderService {
             }
         } catch (FeignException e) {
             logger.error("FeignException decreasing stock for order {}: {}", savedOrder.getId(), e.getMessage(), e);
-            throw new OrderException(ErrorCodeOrder.PRODUCT_SERVICE_STOCK_UPDATE_FAILED, "Failed to update stock.", e);
+            throw new OrderException(
+                    ErrorCodeOrder.PRODUCT_SERVICE_STOCK_UPDATE_FAILED,
+                    "Failed to update stock.",
+                    e
+            );
         }
     }
 
@@ -275,7 +364,10 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse getOrderById(Long orderId) {
         logger.debug("Fetching order by ID: {}", orderId);
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new OrderException(ErrorCodeOrder.ORDER_NOT_FOUND, "Order not found with ID: " + orderId));
+                .orElseThrow(() -> new OrderException(
+                        ErrorCodeOrder.ORDER_NOT_FOUND,
+                        "Order not found with ID: " + orderId
+                ));
         return mapOrderToResponseDTO(order);
     }
 
@@ -283,57 +375,73 @@ public class OrderServiceImpl implements OrderService {
     public List<OrderResponse> getOrdersByUserId(String userId) {
         logger.debug("Fetching orders for user ID: {}", userId);
         List<Order> orders = orderRepository.findByUserId(userId);
-        return orders.stream().map(this::mapOrderToResponseDTO).collect(Collectors.toList());
+        return orders.stream()
+                .map(this::mapOrderToResponseDTO)
+                .collect(Collectors.toList());
     }
 
-   @Override
-@Transactional
-public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, String authorizationHeader) {
-    logger.info("Attempting to update status for order ID: {} to {}", orderId, newStatus);
-    Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new OrderException(ErrorCodeOrder.ORDER_NOT_FOUND, "Order not found with ID: " + orderId));
+    @Override
+    @Transactional
+    public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, String authorizationHeader) {
+        logger.info("Attempting to update status for order ID: {} to {}", orderId, newStatus);
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderException(
+                        ErrorCodeOrder.ORDER_NOT_FOUND,
+                        "Order not found with ID: " + orderId
+                ));
 
-    order.setStatus(newStatus);
-    Order updatedOrder;
-    try {
-        updatedOrder = orderRepository.save(order);
-    } catch (Exception e) {
-        logger.error("Failed to update status for order {}: {}", orderId, e.getMessage(), e);
-        throw new OrderException(ErrorCodeOrder.ORDER_UPDATE_FAILED, "Could not save updated order status.", e);
-    }
-    logger.info("Order ID {} status updated to {}.", updatedOrder.getId(), updatedOrder.getStatus());
-
-    // Lấy UUID từ UserService
-    String username = updatedOrder.getUserId(); // username (baodh)
-    logger.debug("Fetching user for username: {}", username);
-    ApiResponRequest<UserResponse> response;
-    try {
-        response = userServiceClient.getUserByUsername(username, authorizationHeader);
-        if (response.getResult() == null || response.getResult().getId() == null) {
-            logger.error("UserResponse or id is null for username: {}", username);
-            throw new OrderException(ErrorCodeOrder.USER_NOT_FOUND, "User ID is null for username: " + username);
+        order.setStatus(newStatus);
+        Order updatedOrder;
+        try {
+            updatedOrder = orderRepository.save(order);
+        } catch (Exception e) {
+            logger.error("Failed to update status for order {}: {}", orderId, e.getMessage(), e);
+            throw new OrderException(
+                    ErrorCodeOrder.ORDER_UPDATE_FAILED,
+                    "Could not save updated order status.",
+                    e
+            );
         }
-    } catch (FeignException e) {
-        logger.error("Failed to fetch user for username: {}. Error: {}", username, e.getMessage(), e);
-        throw new OrderException(ErrorCodeOrder.USER_NOT_FOUND, "User not found for username: " + username, e);
-    }
-    String userIdForNotification = response.getResult().getId(); // UUID
-    logger.debug("Retrieved UUID: {} for username: {}", userIdForNotification, username);
+        logger.info("Order ID {} status updated to {}.", updatedOrder.getId(), updatedOrder.getStatus());
 
-    // Gửi OrderEvent với UUID
-    OrderEvent event = new OrderEvent();
-    event.setId(updatedOrder.getId());
-    event.setUserId(userIdForNotification);
-    event.setStatus(updatedOrder.getStatus().name());
-    event.setAuthorizationHeader(authorizationHeader);
-    logger.debug("Sending OrderEvent: {}", event);
-    rabbitTemplate.convertAndSend("order_notifications", event);
+        // lấy UUID từ user-service để gửi noti
+        String username = updatedOrder.getUserId();
+        logger.debug("Fetching user for username: {}", username);
+        ApiResponRequest<UserResponse> response;
+        try {
+            response = userServiceClient.getUserByUsername(username, authorizationHeader);
+            if (response.getResult() == null || response.getResult().getId() == null) {
+                logger.error("UserResponse or id is null for username: {}", username);
+                throw new OrderException(
+                        ErrorCodeOrder.USER_NOT_FOUND,
+                        "User ID is null for username: " + username
+                );
+            }
+        } catch (FeignException e) {
+            logger.error("Failed to fetch user for username: {}. Error: {}", username, e.getMessage(), e);
+            throw new OrderException(
+                    ErrorCodeOrder.USER_NOT_FOUND,
+                    "User not found for username: " + username,
+                    e
+            );
+        }
+        String userIdForNotification = response.getResult().getId();
 
-    if (newStatus == OrderStatus.CANCELLED) {
-        handleOrderCancellationStockAdjustment(updatedOrder, authorizationHeader);
+        // Gửi event
+        OrderEvent event = new OrderEvent();
+        event.setId(updatedOrder.getId());
+        event.setUserId(userIdForNotification);
+        event.setStatus(updatedOrder.getStatus().name());
+        event.setAuthorizationHeader(authorizationHeader);
+        logger.debug("Sending OrderEvent: {}", event);
+        rabbitTemplate.convertAndSend("order_notifications", event);
+
+        if (newStatus == OrderStatus.CANCELLED) {
+            handleOrderCancellationStockAdjustment(updatedOrder, authorizationHeader);
+        }
+        return mapOrderToResponseDTO(updatedOrder);
     }
-    return mapOrderToResponseDTO(updatedOrder);
-}
+
     private void handleOrderCancellationStockAdjustment(Order cancelledOrder, String authorizationHeader) {
         logger.info("Order {} cancelled. Increasing stock.", cancelledOrder.getId());
         try {
@@ -353,13 +461,19 @@ public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, Stri
         dto.setUserId(order.getUserId());
         dto.setOrderDate(order.getOrderDate());
         dto.setStatus(order.getStatus());
+
         dto.setTotalAmount(order.getTotalAmount());
+        dto.setVoucherCode(order.getVoucherCode());
+        dto.setDiscountAmount(order.getDiscountAmount());
+        dto.setFinalAmount(order.getFinalAmount());
+
         dto.setPaymentMethod(order.getPaymentMethod());
         dto.setPaymentTransactionId(order.getPaymentTransactionId());
         dto.setCreatedAt(order.getCreatedAt());
         dto.setUpdatedAt(order.getUpdatedAt());
         dto.setShippingAddress(mapOrderToAddressDTO(order, true));
         dto.setBillingAddress(mapOrderToAddressDTO(order, false));
+
         if (order.getItems() != null) {
             dto.setItems(order.getItems().stream()
                     .map(this::mapOrderItemToResponse)
@@ -369,21 +483,20 @@ public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, Stri
     }
 
     private OrderItemResponse mapOrderItemToResponse(OrderItem item) {
-    OrderItemResponse dto = new OrderItemResponse();
-    dto.setProductId(item.getProductId());
-    dto.setProductName(item.getProductName());
-    dto.setQuantity(item.getQuantity());
-    dto.setPrice(item.getPrice());
+        OrderItemResponse dto = new OrderItemResponse();
+        dto.setProductId(item.getProductId());
+        dto.setProductName(item.getProductName());
+        dto.setQuantity(item.getQuantity());
+        dto.setPrice(item.getPrice());
 
-    String imageUrl = item.getImageUrl();
-    if (imageUrl != null && imageUrl.contains("productservice:8081")) {
-        imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
+        String imageUrl = item.getImageUrl();
+        if (imageUrl != null && imageUrl.contains("productservice:8081")) {
+            imageUrl = imageUrl.replace("productservice:8081", "localhost:8081");
+        }
+        dto.setImageUrl(imageUrl);
+        dto.setSubtotal(item.getSubtotal());
+        return dto;
     }
-    dto.setImageUrl(imageUrl); // dùng imageUrl đã sửa
-    dto.setSubtotal(item.getSubtotal());
-    return dto;
-}
-
 
     private void mapAddressDtoToOrder(AddressDTO addressDTO, Order order, boolean isShipping) {
         if (addressDTO == null) return;
@@ -418,7 +531,7 @@ public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, Stri
             dto.setCountry(order.getBillingCountry());
         }
         if (dto.getAddressLine1() == null && dto.getAddressLine2() == null &&
-            dto.getCity() == null && dto.getPostalCode() == null && dto.getCountry() == null) {
+                dto.getCity() == null && dto.getPostalCode() == null && dto.getCountry() == null) {
             return null;
         }
         return dto;
