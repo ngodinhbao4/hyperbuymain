@@ -33,8 +33,21 @@ public class Order {
     @Column(nullable = false)
     private OrderStatus status;
 
+    // ✅ Tổng tiền trước giảm
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
+
+    // ✅ Mã voucher (nếu có)
+    @Column(length = 100)
+    private String voucherCode;
+
+    // ✅ Số tiền giảm
+    @Column(precision = 15, scale = 2)
+    private BigDecimal discountAmount;
+
+    // ✅ Tổng tiền sau giảm = totalAmount - discountAmount
+    @Column(precision = 15, scale = 2)
+    private BigDecimal finalAmount;
 
     @Column(length = 255)
     private String shippingAddressLine1;
@@ -69,7 +82,9 @@ public class Order {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         orderDate = LocalDateTime.now();
-        status = OrderStatus.PENDING;
+        if (status == null) {
+            status = OrderStatus.PENDING;
+        }
     }
 
     @PreUpdate

@@ -1,6 +1,5 @@
 package com.example.order.dto.request;
 
-
 import java.util.List;
 
 import com.example.order.dto.AddressDTO;
@@ -14,7 +13,7 @@ import lombok.Data;
 @Data
 public class CreateOrderRequest {
 
-    private String userId; // Sẽ được lấy từ JWT token trong thực tế, hoặc truyền vào
+    private String userId; // hiện đang truyền username (vd: admin, baodh)
 
     @NotNull(message = "Shipping address is required")
     @Valid
@@ -25,7 +24,11 @@ public class CreateOrderRequest {
     private AddressDTO billingAddress;
 
     @NotBlank(message = "Payment method is required")
-    private String paymentMethod; // Ví dụ: "CREDIT_CARD", "COD"
-    // Thông tin chi tiết thẻ tín dụng sẽ được xử lý bởi Payment Gateway/Service riêng, không lưu ở đây.
+    private String paymentMethod; // "CREDIT_CARD", "COD", ...
+
+    // ✅ Mã voucher (tùy chọn)
+    private String voucherCode;
+
+    // (nếu sau này bạn cho phép client gửi items, vẫn giữ)
     private List<CartItemDTO> items;
 }

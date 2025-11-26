@@ -14,7 +14,15 @@ public class OrderResponse {
     private List<OrderItemResponse> items;
     private LocalDateTime orderDate;
     private OrderStatus status;
+
+    // ✅ Tổng trước giảm
     private BigDecimal totalAmount;
+
+    // ✅ Mã voucher + số tiền giảm + tổng sau giảm
+    private String voucherCode;
+    private BigDecimal discountAmount;
+    private BigDecimal finalAmount;
+
     private AddressDTO shippingAddress;
     private AddressDTO billingAddress;
     private String paymentMethod;

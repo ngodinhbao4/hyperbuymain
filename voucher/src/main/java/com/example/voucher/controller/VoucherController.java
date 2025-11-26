@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -42,4 +43,33 @@ public class VoucherController {
     public ResponseEntity<List<UserVoucher>> getUserVouchers(@PathVariable String userId) {
         return ResponseEntity.ok(voucherService.getUserVouchers(userId));
     }
+
+    // ✅ Áp dụng voucher cho user, trả về số tiền được giảm
+     @GetMapping("/apply")
+    public ResponseEntity<BigDecimal> applyVoucher(
+            @RequestParam String userId,
+            @RequestParam String code,
+            @RequestParam BigDecimal orderAmount
+    ) {
+        BigDecimal discount = voucherService.calculateDiscount(userId, code, orderAmount);
+        return ResponseEntity.ok(discount);
+    }
+
+
+    @PostMapping("/use")
+    public ResponseEntity<Void> useVoucher(
+            @RequestParam String userId,
+            @RequestParam String code
+    ) {
+        voucherService.markVoucherUsed(userId, code);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/user/{userId}/available")
+    public ResponseEntity<?> getAvailableVouchers(
+            @PathVariable String userId
+    ) {
+        return ResponseEntity.ok(voucherService.getAvailableVouchers(userId));
+    }
+
 }
