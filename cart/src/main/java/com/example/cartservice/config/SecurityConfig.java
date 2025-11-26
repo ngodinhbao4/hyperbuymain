@@ -1,6 +1,8 @@
 // Package: com.example.cartservice.config
 package com.example.cartservice.config;
 
+import java.util.List;
+
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -20,7 +22,6 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
 
 @Configuration
@@ -137,14 +138,18 @@ public class SecurityConfig {
      * Nếu bạn dùng bean này, hãy đảm bảo http.cors(Customizer.withDefaults()) hoặc tương tự được gọi.
      */
     @Bean
-    public CorsFilter corsFilter() {
+    public UrlBasedCorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.addAllowedMethod("*");
+        configuration.addAllowedHeader("*");        // ⭐ Cho phép x-store-id
+        configuration.addExposedHeader("*");        // ⭐ FE có thể đọc response headers
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowCredentials(true); // Quan trọng nếu client cần gửi cookie hoặc Authorization header
-        config.addAllowedOriginPattern("*"); // Cẩn thận với "*" trong production, nên chỉ định rõ domain
-        config.addAllowedHeader("*"); // Cho phép tất cả các header
-        config.addAllowedMethod("*"); // Cho phép tất cả các method (GET, POST, PUT, DELETE, OPTIONS, etc.)
-        source.registerCorsConfiguration("/**", config); // Áp dụng cho tất cả các path
-        return new CorsFilter(source);
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }

@@ -13,4 +13,6 @@ public interface RatingRepository extends JpaRepository<Rating, Long> {
     Optional<Rating> findByProductIdAndUsername(Long productId, String username);
 
     List<Rating> findByUsername(String username);
+
+    
 }

@@ -17,6 +17,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -47,17 +48,19 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.addAllowedOrigin("*");
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "http://127.0.0.1:5500"));
-        configuration.setAllowedMethods(Arrays.asList("PATCH", "GET", "POST", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
-        
+
+        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.addAllowedMethod("*");
+        configuration.addAllowedHeader("*");        // ⭐ Cho phép x-store-id
+        configuration.addExposedHeader("*");        // ⭐ FE có thể đọc response headers
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-
+    
     @Bean
     public JwtDecoder jwtDecoder() {
         SecretKeySpec secretKey = new SecretKeySpec(JWT_SIGNER_KEY.getBytes(), "HmacSHA512");

@@ -29,7 +29,7 @@ public class SecurityConfigProduct {
     private static final Logger logger = LoggerFactory.getLogger(SecurityConfigProduct.class);
 
     // Pattern phục vụ ảnh: /product-images/**
-    @Value("${app.static-resource.public-path-pattern:/product-images/**}")
+    @Value("${app.static-resource.public-path-pattern:/files/**}")
     private String publicImagesPathPattern;
 
     // 🔑 Dùng đúng key trong application.properties:
@@ -64,6 +64,7 @@ public class SecurityConfigProduct {
                 .authorizeHttpRequests(auth -> auth
                         // Ảnh public không cần token
                         .requestMatchers(publicImagesPathPattern).permitAll()
+                        .requestMatchers("/api/v1/recommendations/guest").permitAll()
 
                         // Nếu muốn mở GET product public cho khách vãng lai thì thêm:
                         // .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()

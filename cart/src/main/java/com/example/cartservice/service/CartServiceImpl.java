@@ -3,6 +3,7 @@ package com.example.cartservice.service;
 import com.example.cartservice.client.ProductServiceClient;
 import com.example.cartservice.dto.request.CartItemRequest;
 import com.example.cartservice.dto.response.CartResponse;
+import com.example.cartservice.dto.response.ApiResponse;
 import com.example.cartservice.dto.response.CartItemResponse;
 import com.example.cartservice.dto.request.ProductDetailRequest;
 import com.example.cartservice.entity.Cart;
@@ -54,24 +55,43 @@ public class CartServiceImpl implements CartService {
     }
 
     private ProductDetailRequest fetchProductDetailsOrFail(String productId, String token) {
-        try {
-            // Bỏ chuyển đổi sang Long, giữ productId là String
-            ProductDetailRequest productDetail = productServiceClient.getProductById(productId, token);
-            if (productDetail == null || productDetail.getId() == null) {
-                throw new CartException(ErrorCodeCart.PRODUCT_NOT_AVAILABLE, "Product details are invalid for ID: " + productId);
-            }
-            if (productDetail.getImageUrl() != null && productDetail.getImageUrl().contains("productservice:8081")) {
-                String publicHost = productServicePublicUrl.replace("http://", "");
-                String newImageUrl = productDetail.getImageUrl().replace("productservice:8081", publicHost);
-                log.info("Adjusted imageUrl from {} to {}", productDetail.getImageUrl(), newImageUrl);
-                productDetail.setImageUrl(newImageUrl);
-            }
-            return productDetail;
-        } catch (FeignException e) {
-            log.error("FeignException when calling ProductService: {}", e.getMessage(), e);
-            throw new CartException(ErrorCodeCart.PRODUCT_SERVICE_UNREACHABLE, "Could not retrieve product details for ID: " + productId);
+    try {
+        // Gọi product-service: nhận về ApiResponse<ProductDetailRequest>
+        ApiResponse<ProductDetailRequest> response =
+                productServiceClient.getProductById(productId, token);
+
+        ProductDetailRequest productDetail =
+                (response != null) ? response.getResult() : null;
+
+        if (productDetail == null || productDetail.getId() == null) {
+            throw new CartException(
+                    ErrorCodeCart.PRODUCT_NOT_AVAILABLE,
+                    "Product details are invalid for ID: " + productId
+            );
         }
+
+        // Giữ nguyên logic fix imageUrl (nếu bạn đang có biến productServicePublicUrl)
+        if (productDetail.getImageUrl() != null
+                && productDetail.getImageUrl().contains("productservice:8081")) {
+
+            String publicHost = productServicePublicUrl.replace("http://", "");
+            String newImageUrl = productDetail.getImageUrl()
+                    .replace("productservice:8081", publicHost);
+
+            log.info("Adjusted imageUrl from {} to {}", productDetail.getImageUrl(), newImageUrl);
+            productDetail.setImageUrl(newImageUrl);
+        }
+
+        return productDetail;
+
+    } catch (FeignException e) {
+        log.error("FeignException when calling ProductService: {}", e.getMessage(), e);
+        throw new CartException(
+                ErrorCodeCart.PRODUCT_NOT_AVAILABLE,
+                "Could not retrieve product details for ID: " + productId
+        );
     }
+}
 
     private CartResponse mapCartToEnrichedDto(Cart cart, String token) {
         CartResponse cartDto = cartMapper.toCartResponse(cart);

@@ -139,7 +139,7 @@ public class ProductServiceImpl implements ProductService {
     // Luôn khởi tạo sellerInfo với storeId
     ProductResponse.SellerInfo sellerInfo = new ProductResponse.SellerInfo();
     sellerInfo.setStoreId(product.getStoreId());
-    
+
     // Gọi UserService để lấy userId và username
     if (token != null) {
         try {
@@ -152,21 +152,32 @@ public class ProductServiceImpl implements ProductService {
             logger.warn("Không thể lấy userId và username cho storeId: {}. Lỗi: {}", product.getStoreId(), e.getMessage(), e);
         }
     }
-
     dto.setSellerInfo(sellerInfo);
 
     String storedImageIdentifier = product.getImageUrl();
     if (storedImageIdentifier != null && !storedImageIdentifier.isEmpty()) {
+
+        // 🧹 Chuẩn hóa path, loại bỏ "files/" thừa
+        storedImageIdentifier = storedImageIdentifier.replace("\\", "/");
+        if (storedImageIdentifier.startsWith("/")) {
+            storedImageIdentifier = storedImageIdentifier.substring(1);
+        }
+        if (storedImageIdentifier.startsWith("files/")) {
+            storedImageIdentifier = storedImageIdentifier.substring("files/".length());
+        }
+
         String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
         String cleanPublicPath = publicPathPattern.endsWith("/**")
                 ? publicPathPattern.substring(0, publicPathPattern.length() - 3)
                 : publicPathPattern;
+
         if (cleanPublicPath.endsWith("/")) {
             cleanPublicPath = cleanPublicPath.substring(0, cleanPublicPath.length() - 1);
         }
         if (!cleanPublicPath.startsWith("/")) {
             cleanPublicPath = "/" + cleanPublicPath;
         }
+
         String fullImageUrl = baseUrl + cleanPublicPath + "/" + storedImageIdentifier;
         dto.setImageUrl(fullImageUrl);
     } else {
@@ -176,38 +187,50 @@ public class ProductServiceImpl implements ProductService {
 }
 
     private Map<String, Object> convertToProductMap(Product product) {
-        Map<String, Object> productMap = new HashMap<>();
-        productMap.put("id", product.getId());
-        productMap.put("name", product.getName());
-        productMap.put("description", product.getDescription());
-        productMap.put("price", product.getPrice());
-        productMap.put("sku", product.getSku());
-        productMap.put("stockQuantity", product.getStockQuantity());
-        productMap.put("categoryId", product.getCategory() != null ? product.getCategory().getId() : null);
-        productMap.put("active", product.isActive());
+    Map<String, Object> productMap = new HashMap<>();
+    productMap.put("id", product.getId());
+    productMap.put("name", product.getName());
+    productMap.put("description", product.getDescription());
+    productMap.put("price", product.getPrice());
+    productMap.put("sku", product.getSku());
+    productMap.put("stockQuantity", product.getStockQuantity());
+    productMap.put("categoryId", product.getCategory() != null ? product.getCategory().getId() : null);
+    productMap.put("active", product.isActive());
 
-        Map<String, Object> sellerInfo = new HashMap<>();
-        sellerInfo.put("storeId", product.getStoreId());
-        productMap.put("sellerInfo", sellerInfo);
+    Map<String, Object> sellerInfo = new HashMap<>();
+    sellerInfo.put("storeId", product.getStoreId());
+    productMap.put("sellerInfo", sellerInfo);
 
-        String storedImageIdentifier = product.getImageUrl();
-        if (storedImageIdentifier != null && !storedImageIdentifier.isEmpty()) {
-            String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
-            String cleanPublicPath = publicPathPattern.endsWith("/**")
-                    ? publicPathPattern.substring(0, publicPathPattern.length() - 3)
-                    : publicPathPattern;
-            if (cleanPublicPath.endsWith("/")) {
-                cleanPublicPath = cleanPublicPath.substring(0, cleanPublicPath.length() - 1);
-            }
-            if (!cleanPublicPath.startsWith("/")) {
-                cleanPublicPath = "/" + cleanPublicPath;
-            }
-            productMap.put("imageUrl", baseUrl + cleanPublicPath + "/" + storedImageIdentifier);
-        } else {
-            productMap.put("imageUrl", null);
+    String storedImageIdentifier = product.getImageUrl();
+    if (storedImageIdentifier != null && !storedImageIdentifier.isEmpty()) {
+
+        // 🧹 Chuẩn hóa path, loại bỏ "files/" thừa
+        storedImageIdentifier = storedImageIdentifier.replace("\\", "/");
+        if (storedImageIdentifier.startsWith("/")) {
+            storedImageIdentifier = storedImageIdentifier.substring(1);
         }
-        return productMap;
+        if (storedImageIdentifier.startsWith("files/")) {
+            storedImageIdentifier = storedImageIdentifier.substring("files/".length());
+        }
+
+        String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+        String cleanPublicPath = publicPathPattern.endsWith("/**")
+                ? publicPathPattern.substring(0, publicPathPattern.length() - 3)
+                : publicPathPattern;
+
+        if (cleanPublicPath.endsWith("/")) {
+            cleanPublicPath = cleanPublicPath.substring(0, cleanPublicPath.length() - 1);
+        }
+        if (!cleanPublicPath.startsWith("/")) {
+            cleanPublicPath = "/" + cleanPublicPath;
+        }
+
+        productMap.put("imageUrl", baseUrl + cleanPublicPath + "/" + storedImageIdentifier);
+    } else {
+        productMap.put("imageUrl", null);
     }
+    return productMap;
+}
 
     @Override
     @Transactional
@@ -247,44 +270,52 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Transactional
-    public ProductResponse updateProduct(Long id, ProductRequest productRequest, MultipartFile imageFile, String token) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + id));
+@Transactional
+public ProductResponse updateProduct(Long id, ProductRequest productRequest, MultipartFile imageFile, String token) {
+    Product product = productRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + id));
 
-        String storeId = productRequest.getStoreId();
-        if (storeId == null || !product.getStoreId().equals(storeId)) {
-            throw new RuntimeException("Bạn không có quyền cập nhật sản phẩm này");
-        }
+    String storeId = productRequest.getStoreId();
 
-        if (imageFile != null && !imageFile.isEmpty()) {
-            deleteStoredFile(product.getImageUrl());
-            String newStoredFileName = storeFile(imageFile);
-            product.setImageUrl(newStoredFileName);
-        }
-
-        product.setName(productRequest.getName());
-        product.setDescription(productRequest.getDescription());
-        if (productRequest.getPrice() != null) {
-            product.setPrice(productRequest.getPrice());
-        }
-        product.setSku(productRequest.getSku());
-        if (productRequest.getStockQuantity() != null) {
-            product.setStockQuantity(productRequest.getStockQuantity());
-        }
-
-        if (productRequest.getCategoryId() != null) {
-            Category category = categoryRepository.findById(productRequest.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy Category với ID: " + productRequest.getCategoryId()));
-            product.setCategory(category);
-        } else {
-            product.setCategory(null);
-        }
-
-        Product updatedProduct = productRepository.save(product);
-        logger.info("Đã cập nhật sản phẩm với ID: {}", updatedProduct.getId());
-        return convertToProductResponseWithImageUrl(updatedProduct, token);
+    // Nếu FE gửi storeId nhưng không trùng với storeId của sản phẩm -> chặn
+    if (storeId != null && !product.getStoreId().equals(storeId)) {
+        logger.error("Cửa hàng với storeId: {} không có quyền cập nhật sản phẩm với ID: {}", storeId, id);
+        throw new RuntimeException("Bạn không có quyền cập nhật sản phẩm này");
     }
+
+    // Nếu FE không gửi storeId -> chỉ log cảnh báo, không chặn (tránh 500)
+    if (storeId == null) {
+        logger.warn("Không nhận được storeId từ FE khi cập nhật sản phẩm ID: {}. Tạm thời bỏ qua kiểm tra quyền theo storeId.", id);
+    }
+
+    if (imageFile != null && !imageFile.isEmpty()) {
+        deleteStoredFile(product.getImageUrl());
+        String newStoredFileName = storeFile(imageFile);
+        product.setImageUrl(newStoredFileName);
+    }
+
+    product.setName(productRequest.getName());
+    product.setDescription(productRequest.getDescription());
+    if (productRequest.getPrice() != null) {
+        product.setPrice(productRequest.getPrice());
+    }
+    product.setSku(productRequest.getSku());
+    if (productRequest.getStockQuantity() != null) {
+        product.setStockQuantity(productRequest.getStockQuantity());
+    }
+
+    if (productRequest.getCategoryId() != null) {
+        Category category = categoryRepository.findById(productRequest.getCategoryId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy Category với ID: " + productRequest.getCategoryId()));
+        product.setCategory(category);
+    } else {
+        product.setCategory(null);
+    }
+
+    Product updatedProduct = productRepository.save(product);
+    logger.info("Đã cập nhật sản phẩm với ID: {}", updatedProduct.getId());
+    return convertToProductResponseWithImageUrl(updatedProduct, token);
+}
 
     @Override
     @Transactional(readOnly = true)

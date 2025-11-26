@@ -1,7 +1,6 @@
 package com.example.order.dto.response;
 
 import lombok.Data;
-import java.util.List;
 
 @Data
 public class UserResponse {
@@ -10,12 +9,5 @@ public class UserResponse {
     private String name;
     private String email;
     private String dob;
-    private List<Role> role;
 
-    @Data
-    public static class Role {
-        private String name;
-        private String description;
-        private List<String> permission;
-    }
 }

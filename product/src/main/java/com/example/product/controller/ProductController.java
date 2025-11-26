@@ -5,6 +5,7 @@ import com.example.product.dto.response.ApiResponse;
 import com.example.product.dto.response.ProductResponse;
 import com.example.product.dto.request.UpdateStockRequest;
 import com.example.product.service.ProductService;
+import com.example.product.service.ProductViewHistoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.data.domain.Sort;
@@ -34,6 +37,7 @@ public class ProductController {
 
     private final ProductService productService;
     private static final Logger logger = LoggerFactory.getLogger(ProductController.class);
+    private final ProductViewHistoryService productViewHistoryService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ProductResponse> createProduct(
@@ -61,14 +65,6 @@ public class ProductController {
             @RequestHeader(value = "Authorization", required = true) String token) {
         ProductResponse updatedProduct = productService.updateStock(id, updateStockRequest.getChange(), token);
         return ResponseEntity.ok(updatedProduct);
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<ProductResponse> getProductById(
-            @PathVariable Long id,
-            @RequestHeader(value = "Authorization", required = true) String token) {
-        ProductResponse product = productService.getProductById(id, token);
-        return ResponseEntity.ok(product);
     }
 
     @GetMapping
@@ -155,5 +151,34 @@ public class ProductController {
         Pageable pageable = PageRequest.of(page, size);
         List<Map<String, Object>> products = productService.findProductsByStoreId(storeId, pageable);
         return ResponseEntity.ok(products);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<ProductResponse>> getProductById(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Jwt jwt   // Lấy JWT trong header Authorization
+    ) {
+        String username = null;
+        String token = null;
+
+    // Nếu user đã đăng nhập thì jwt != null
+        if (jwt != null) {
+            username = jwt.getSubject();              // dùng để log view
+            token = "Bearer " + jwt.getTokenValue();  // dùng để gọi user-service
+        }
+
+    // Ghi lịch sử người xem sản phẩm
+        productViewHistoryService.logView(id, username);
+
+    // Truyền đúng token JWT (KHÔNG truyền username nữa!)
+        ProductResponse product = productService.getProductById(id, token);
+
+        ApiResponse<ProductResponse> response = ApiResponse.<ProductResponse>builder()
+                .code(1000)
+                .message("Lấy chi tiết sản phẩm thành công")
+                .result(product)
+                .build();
+
+        return ResponseEntity.ok(response);
     }
 }
