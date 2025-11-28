@@ -22,6 +22,7 @@ import com.example.order.service.client.ProductServiceClient;
 import com.example.order.service.client.UpdateStockRequest;
 import com.example.order.service.client.UserServiceClient;
 import com.example.order.service.client.VoucherServiceClient;
+import com.example.order.service.client.CheckoutCartItemRequest;
 
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;        // ✅ thêm
 import java.util.stream.Collectors;
 
 @Service
@@ -85,51 +88,86 @@ public class OrderServiceImpl implements OrderService {
                 userIdForOrder, userIdForNotification, username);
 
         // 2) Lấy giỏ hàng từ cart-service
+        // 2) Lấy giỏ hàng từ cart-service
         CartDTO cart = fetchCartFromService(userIdForNotification, authorizationHeader);
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             logger.warn("Cart is empty for user ID: {}. Cannot create order.", userIdForNotification);
             throw new OrderException(ErrorCodeOrder.EMPTY_CART_FOR_ORDER);
         }
-        logger.info("Cart fetched for user {}: {} items", userIdForNotification, cart.getItems().size());
-
         List<CartItemDTO> cartItems = cart.getItems();
+        logger.info("Cart fetched for user {}: {} items", userIdForNotification, cartItems.size());
 
-        // 3) Kiểm tra từng sản phẩm
-        for (CartItemDTO item : cartItems) {
-            logger.info("Processing cart item: productId={}, quantity={}", item.getProductId(), item.getQuantity());
-            ProductDTO product = fetchProductFromService(item.getProductId(), authorizationHeader);
-            validateProductAvailability(product, item.getQuantity());
+        // 2.1) Xác định danh sách item sẽ thanh toán
+List<CartItemDTO> itemsToOrder;
+
+if (createOrderRequest.getItems() == null || createOrderRequest.getItems().isEmpty()) {
+    // 🟢 Không gửi items trong request -> thanh toán toàn bộ giỏ
+    itemsToOrder = cartItems;
+    logger.info("No items specified in request. Will checkout ALL cart items.");
+} else {
+    // 🟡 Gửi danh sách items -> chỉ checkout các item này
+    logger.info("Request contains {} items to checkout (partial checkout).", createOrderRequest.getItems().size());
+
+    // Map cart theo productId để tra nhanh
+    Map<Long, CartItemDTO> cartItemMap = new HashMap<>();
+    for (CartItemDTO ci : cartItems) {
+        cartItemMap.put(ci.getProductId(), ci);
+    }
+
+    itemsToOrder = createOrderRequest.getItems().stream().map(reqItem -> {
+        CartItemDTO inCart = cartItemMap.get(reqItem.getProductId());
+        if (inCart == null) {
+            throw new OrderException(
+                    ErrorCodeOrder.INVALID_ORDER_REQUEST,
+                    "Product " + reqItem.getProductId() + " is not in cart."
+            );
         }
+        int requestedQty = reqItem.getQuantity();
+        if (requestedQty <= 0) {
+            throw new OrderException(
+                    ErrorCodeOrder.INVALID_ORDER_REQUEST,
+                    "Requested quantity for product " + reqItem.getProductId() + " must be > 0."
+            );
+        }
+
+        int quantityToBuy = Math.min(requestedQty, inCart.getQuantity());
+
+        CartItemDTO clone = new CartItemDTO();
+        clone.setProductId(inCart.getProductId());
+        clone.setQuantity(quantityToBuy);
+        // nếu CartItemDTO có thêm field khác thì có thể copy thêm ở đây
+        return clone;
+    }).collect(Collectors.toList());
+
+    if (itemsToOrder.isEmpty()) {
+        throw new OrderException(
+                ErrorCodeOrder.INVALID_ORDER_REQUEST,
+                "No valid cart items selected for checkout."
+        );
+    }
+}
+
+logger.info("Will create order with {} items.", itemsToOrder.size());
+
+        // 3) Kiểm tra từng sản phẩm (chỉ trên selectedItems)
+        for (CartItemDTO item : itemsToOrder) {
+    logger.info("Processing cart item: productId={}, quantity={}", item.getProductId(), item.getQuantity());
+    ProductDTO product = fetchProductFromService(item.getProductId(), authorizationHeader);
+    validateProductAvailability(product, item.getQuantity());
+}
 
         // 4) Khởi tạo Order
-        Order order = initializeOrder(createOrderRequest, cartItems);
+        Order order = initializeOrder(createOrderRequest);  
         order.setUserId(userIdForOrder); // lưu username
 
-        // Gán địa chỉ & payment từ request (phòng khi initializeOrder chưa set đầy đủ)
-        if (createOrderRequest.getShippingAddress() != null) {
-            order.setShippingAddressLine1(createOrderRequest.getShippingAddress().getAddressLine1());
-            order.setShippingAddressLine2(createOrderRequest.getShippingAddress().getAddressLine2());
-            order.setShippingCity(createOrderRequest.getShippingAddress().getCity());
-            order.setShippingCountry(createOrderRequest.getShippingAddress().getCountry());
-            order.setShippingPostalCode(createOrderRequest.getShippingAddress().getPostalCode());
-        }
-        if (createOrderRequest.getBillingAddress() != null) {
-            order.setBillingAddressLine1(createOrderRequest.getBillingAddress().getAddressLine1());
-            order.setBillingAddressLine2(createOrderRequest.getBillingAddress().getAddressLine2());
-            order.setBillingCity(createOrderRequest.getBillingAddress().getCity());
-            order.setBillingCountry(createOrderRequest.getBillingAddress().getCountry());
-            order.setBillingPostalCode(createOrderRequest.getBillingAddress().getPostalCode());
-        }
-        order.setPaymentMethod(createOrderRequest.getPaymentMethod());
-
-        // 5) Tạo OrderItem từ CartItem
-        List<OrderItem> orderItems = cartItems.stream()
-                .map(item -> {
-                    ProductDTO product = fetchProductFromService(item.getProductId(), authorizationHeader);
-                    return createOrderItem(product, item.getQuantity(), order);
-                })
-                .collect(Collectors.toList());
-        order.setItems(orderItems);
+        // 5) Tạo OrderItem từ selectedItems
+        List<OrderItem> orderItems = itemsToOrder.stream()
+        .map(item -> {
+            ProductDTO product = fetchProductFromService(item.getProductId(), authorizationHeader);
+            return createOrderItem(product, item.getQuantity(), order);
+        })
+        .collect(Collectors.toList());
+order.setItems(orderItems);
 
         // 6) Tính tổng trước giảm
         BigDecimal totalAmountBeforeDiscount = orderItems.stream()
@@ -158,7 +196,6 @@ public class OrderServiceImpl implements OrderService {
             } catch (Exception e) {
                 logger.error("Failed to apply voucher {} for user {}: {}",
                         voucherCode, userIdForNotification, e.getMessage(), e);
-                // ở đây mình cho throw để FE biết có vấn đề với voucher
                 throw new OrderException(
                         ErrorCodeOrder.INVALID_ORDER_REQUEST,
                         "Cannot apply voucher: " + voucherCode,
@@ -189,13 +226,21 @@ public class OrderServiceImpl implements OrderService {
                 userIdForOrder, totalAmountBeforeDiscount, discountAmount, finalAmount, voucherCode);
 
         // 10) Lưu đơn
-        Order savedOrder = saveOrderToDatabase(order);
+Order savedOrder = saveOrderToDatabase(order);
 
-        // 11) Trừ tồn kho
-        decreaseProductStock(savedOrder, authorizationHeader);
+// 11) Trừ tồn kho
+decreaseProductStock(savedOrder, authorizationHeader);
 
-        // 12) Xóa giỏ hàng
-        clearUserCart(userIdForNotification, savedOrder.getId(), authorizationHeader);
+// 12) Cập nhật giỏ hàng sau thanh toán
+// - Nếu checkout ALL giỏ (request không gửi items) -> clearCart
+// - Nếu checkout 1 phần -> chỉ trừ số lượng đã mua
+if (createOrderRequest.getItems() == null || createOrderRequest.getItems().isEmpty()) {
+    // Thanh toán toàn bộ
+    clearUserCart(userIdForNotification, savedOrder.getId(), authorizationHeader);
+} else {
+    // Thanh toán một phần
+    adjustCartAfterCheckout(userIdForNotification, itemsToOrder, savedOrder.getId(), authorizationHeader);
+}
 
         // 13) Xác nhận đơn
         confirmOrder(savedOrder);
@@ -227,6 +272,48 @@ public class OrderServiceImpl implements OrderService {
         rabbitTemplate.convertAndSend("order_notifications", event);
 
         return mapOrderToResponseDTO(savedOrder);
+    }
+
+    /**
+     * ✅ Nếu request.items null/empty → dùng toàn bộ cartItems.
+     * ✅ Nếu có request.items          → chỉ lấy những productId có trong cart và quantity hợp lệ.
+     */
+    private List<CartItemDTO> resolveSelectedItems(CreateOrderRequest request, List<CartItemDTO> cartItems) {
+        List<CartItemDTO> fromRequest = request.getItems();
+        if (fromRequest == null || fromRequest.isEmpty()) {
+            // Thanh toán toàn bộ giỏ hàng
+            return cartItems;
+        }
+
+        // map productId -> CartItemDTO trong giỏ
+        Map<Long, CartItemDTO> cartItemMap = cartItems.stream()
+                .collect(Collectors.toMap(CartItemDTO::getProductId, c -> c));
+
+        return fromRequest.stream().map(reqItem -> {
+            CartItemDTO cartItem = cartItemMap.get(reqItem.getProductId());
+            if (cartItem == null) {
+                throw new OrderException(
+                        ErrorCodeOrder.INVALID_ORDER_REQUEST,
+                        "Product " + reqItem.getProductId() + " is not in cart."
+                );
+            }
+
+            int quantityToOrder = reqItem.getQuantity();
+            if (quantityToOrder <= 0) {
+                throw new OrderException(
+                        ErrorCodeOrder.INVALID_ORDER_REQUEST,
+                        "Invalid quantity for product " + reqItem.getProductId()
+                );
+            }
+
+            if (quantityToOrder > cartItem.getQuantity()) {
+                // Không cho mua nhiều hơn số lượng trong giỏ
+                quantityToOrder = cartItem.getQuantity();
+            }
+
+            cartItem.setQuantity(quantityToOrder);
+            return cartItem;
+        }).collect(Collectors.toList());
     }
 
     private CartDTO fetchCartFromService(String userId, String authorizationHeader) {
@@ -286,13 +373,21 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private Order initializeOrder(CreateOrderRequest request, List<CartItemDTO> cartItems) {
+    // ✅ Đơn giản hoá: billingAddress null → dùng shippingAddress
+    private Order initializeOrder(CreateOrderRequest request) {
         Order order = new Order();
         order.setUserId(request.getUserId());
         order.setOrderDate(LocalDateTime.now());
         order.setStatus(OrderStatus.PENDING);
-        mapAddressDtoToOrder(request.getShippingAddress(), order, true);
-        mapAddressDtoToOrder(request.getBillingAddress(), order, false);
+
+        AddressDTO shipping = request.getShippingAddress();
+        AddressDTO billing = request.getBillingAddress() != null
+                ? request.getBillingAddress()
+                : shipping; // nếu không gửi billing → dùng shipping luôn
+
+        mapAddressDtoToOrder(shipping, order, true);
+        mapAddressDtoToOrder(billing, order, false);
+
         order.setPaymentMethod(request.getPaymentMethod());
         return order;
     }
@@ -536,4 +631,25 @@ public class OrderServiceImpl implements OrderService {
         }
         return dto;
     }
+
+    private void adjustCartAfterCheckout(
+        String userId,
+        List<CartItemDTO> purchasedItems,
+        Long orderId,
+        String authorizationHeader
+) {
+    try {
+        List<CheckoutCartItemRequest> payload = purchasedItems.stream()
+                .map(i -> new CheckoutCartItemRequest(i.getProductId(), i.getQuantity()))
+                .collect(Collectors.toList());
+
+        cartServiceClient.removeItemsAfterCheckout(payload, authorizationHeader);
+        logger.info("Adjusted cart for user {} after order {} ({} items).",
+                userId, orderId, purchasedItems.size());
+    } catch (Exception e) {
+        logger.error("Failed to adjust cart for user {} after order {}: {}",
+                userId, orderId, e.getMessage(), e);
+        // không throw để đơn vẫn thành công
+    }
+}
 }

@@ -1,5 +1,8 @@
 package com.example.cartservice.service;
 
+import java.util.List;
+
+import com.example.cartservice.dto.CheckoutCartItemRequest;
 import com.example.cartservice.dto.request.CartItemRequest;
 import com.example.cartservice.dto.response.CartResponse;
 
@@ -10,4 +13,6 @@ public interface CartService {
     CartResponse removeItemFromCart(String userId, String productId);
     void clearCart(String userId);
     String getOrCreateCartIdForUser(String userId);
+    void removeItemsAfterCheckout(String userId, List<CheckoutCartItemRequest> items);
+
 }

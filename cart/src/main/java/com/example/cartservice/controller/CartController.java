@@ -1,5 +1,6 @@
 package com.example.cartservice.controller;
 
+import com.example.cartservice.dto.CheckoutCartItemRequest;
 import com.example.cartservice.dto.request.CartItemRequest;
 import com.example.cartservice.dto.response.ApiResponse;
 import com.example.cartservice.dto.response.CartResponse;
@@ -9,8 +10,12 @@ import com.example.cartservice.service.CartService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -127,5 +132,18 @@ public class CartController {
                 .message("Current user's cart cleared successfully.")
                 .build();
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/checkout-remove")
+    public ResponseEntity<Void> removeItemsAfterCheckout(
+            @RequestBody List<CheckoutCartItemRequest> items,
+            Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        String userId = authentication.getName(); // hoặc lấy từ JWT claim nếu em đang dùng UUID
+        cartService.removeItemsAfterCheckout(userId, items);
+        return ResponseEntity.ok().build();
     }
 }

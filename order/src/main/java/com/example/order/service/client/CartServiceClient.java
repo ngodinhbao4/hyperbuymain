@@ -9,6 +9,8 @@ import com.example.order.config.FeignConfig;
 import feign.FeignException;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import java.util.List;
@@ -45,4 +47,11 @@ public interface CartServiceClient {
             throw new RuntimeException("Unexpected error while fetching cart: " + e.getMessage(), e);
         }
     }
+
+       // 🔥 API mới: xoá / trừ những item đã checkout
+    @PostMapping("/api/v1/carts/checkout-remove")
+    void removeItemsAfterCheckout(
+            @RequestBody List<CheckoutCartItemRequest> items,
+            @RequestHeader("Authorization") String authorizationHeader
+    );
 }
