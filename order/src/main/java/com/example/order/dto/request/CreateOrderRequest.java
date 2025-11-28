@@ -19,7 +19,6 @@ public class CreateOrderRequest {
     @Valid
     private AddressDTO shippingAddress;
 
-    @NotNull(message = "Billing address is required")
     @Valid
     private AddressDTO billingAddress;
 
