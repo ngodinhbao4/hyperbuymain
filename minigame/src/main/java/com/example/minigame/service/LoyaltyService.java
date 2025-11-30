@@ -1,4 +1,6 @@
 package com.example.minigame.service;
+import com.example.minigame.dto.reponse.SpendPointsResponse;
+import com.example.minigame.dto.request.SpendPointsRequest;
 import com.example.minigame.entity.LoyaltyAccount;
 import com.example.minigame.entity.LoyaltyTransaction;
 
@@ -15,9 +17,9 @@ public interface LoyaltyService {
     // ✅ Cộng điểm (ví dụ: đăng nhập mỗi ngày, chơi minigame)
     LoyaltyTransaction earnPoints(String userId, int points, String description);
 
-    // ✅ Trừ điểm (ví dụ: đổi voucher)
-    LoyaltyTransaction spendPoints(String userId, int points, String description);
 
     // ✅ Lấy lịch sử giao dịch của người dùng
     List<LoyaltyTransaction> getTransactionHistory(String userId);
+
+    SpendPointsResponse spendPoints(SpendPointsRequest request);
 }

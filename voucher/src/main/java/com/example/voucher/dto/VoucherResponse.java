@@ -18,4 +18,5 @@ public class VoucherResponse {
     private LocalDateTime endDate;
     private Integer quantity;
     private String status;        // ACTIVE / INACTIVE
+    private Integer pointCost;
 }

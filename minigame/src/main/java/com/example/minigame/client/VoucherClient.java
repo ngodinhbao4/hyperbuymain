@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 
-@FeignClient(name = "voucher-service", url = "http://voucher-service:8089/vouchers")
+@FeignClient(name = "voucher-service", url = "http://voucher-service:8089/voucher/vouchers")
 public interface VoucherClient {
 
     // 🎁 Gọi sang voucher-service để phát voucher cho user
@@ -21,4 +21,8 @@ public interface VoucherClient {
     // 📜 Lấy danh sách voucher của user từ voucher-service
     @GetMapping("/user/{userId}")
     List<UserVoucherDTO> getUserVouchers(@PathVariable("userId") String userId);
+
+    @PostMapping("/redeem-by-points/{userId}")
+    UserVoucherDTO redeemVoucherByPoints(@PathVariable("userId") String userId,
+                                         @RequestParam("code") String code);
 }

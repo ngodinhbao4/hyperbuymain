@@ -72,4 +72,15 @@ public class VoucherController {
         return ResponseEntity.ok(voucherService.getAvailableVouchers(userId));
     }
 
+    // ✅ Đổi điểm để lấy voucher
+@PostMapping("/redeem-by-points/{userId}")
+public ResponseEntity<UserVoucher> redeemByPoints(
+        @PathVariable String userId,
+        @RequestParam String code
+) {
+    UserVoucher userVoucher = voucherService.redeemVoucherByPoints(userId, code);
+    return ResponseEntity.ok(userVoucher);
+}
+
+
 }

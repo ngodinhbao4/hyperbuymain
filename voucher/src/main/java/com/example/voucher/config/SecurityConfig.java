@@ -46,6 +46,17 @@ public class SecurityConfig {
 
                 // ✅ API admin-only
                 .requestMatchers("/voucher/vouchers").hasRole("ADMIN")
+                .requestMatchers("/vouchers/redeem-by-points/**").permitAll()
+                .requestMatchers("/vouchers/user/**").permitAll()
+                .requestMatchers("/vouchers/redeem-by-points/**").permitAll()
+                // PHÁT VOUCHER CHO USER (từ minigame)
+                .requestMatchers("/vouchers/issue/**").permitAll()
+                // LẤY VOUCHER CỦA USER
+                .requestMatchers("/vouchers/user/**").permitAll()
+                 .requestMatchers(
+                    "/voucher/vouchers/redeem-by-points/**"
+                ).permitAll()
+
 
                 // ✅ Còn lại cần xác thực
                 .anyRequest().authenticated()

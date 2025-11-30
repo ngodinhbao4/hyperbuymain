@@ -52,6 +52,15 @@ public class SecurityConfig {
                         "/minigame/summary"
                 ).permitAll()
 
+                .requestMatchers(
+                    "/minigame/api/v1/loyalty/spend",
+                    "/minigame/api/v1/loyalty/**"    // nếu muốn thoáng luôn cả group
+                ).permitAll()
+                .requestMatchers(
+                    "/api/v1/loyalty/spend",
+                    "/api/v1/loyalty/**"    // nếu muốn thoáng luôn cả group
+                ).permitAll()
+
                 // 🔒 Các API cần JWT xác thực
                 .requestMatchers(
                         "/minigame/spin/**",
