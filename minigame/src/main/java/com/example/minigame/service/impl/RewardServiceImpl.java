@@ -42,26 +42,27 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * 💱 Đổi điểm sang voucher (nếu đủ điểm)
+     * 💱 Đổi điểm sang voucher (FLOW MỚI):
+     *  - Không tự trừ điểm ở đây nữa
+     *  - Gọi sang voucher-service để:
+     *      + kiểm tra pointCost của voucher
+     *      + gọi loyalty-service trừ điểm
+     *      + phát voucher cho user
      */
     @Override
     @Transactional
     public void redeemVoucher(String userId, String code) {
-        LoyaltyAccount account = loyaltyAccountRepository.findByUserId(userId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản điểm của người dùng."));
+        try {
+            log.info("🎯 Yêu cầu đổi điểm lấy voucher '{}' cho user {}", code, userId);
 
-        if (account.getPoints() < 100) {
-            throw new RuntimeException("Không đủ điểm để đổi voucher! Cần ít nhất 100 điểm.");
+            // Gọi voucher-service API mới
+            UserVoucherDTO userVoucher = voucherClient.redeemVoucherByPoints(userId, code);
+
+            log.info("🎁 Người dùng {} đã đổi điểm thành công để nhận voucher {}", userId, code);
+        } catch (Exception e) {
+            log.error("❌ Lỗi khi đổi điểm lấy voucher cho user {}: {}", userId, e.getMessage());
+            throw new RuntimeException("Không thể đổi điểm lấy voucher: " + e.getMessage());
         }
-
-        // Trừ điểm
-        account.setPoints(account.getPoints() - 100);
-        loyaltyAccountRepository.save(account);
-
-        // Gọi sang voucher-service để phát voucher
-        voucherClient.issueVoucher(userId, code);
-
-        log.info("🎁 Người dùng {} đã đổi 100 điểm để nhận voucher {}", userId, code);
     }
 
     /**

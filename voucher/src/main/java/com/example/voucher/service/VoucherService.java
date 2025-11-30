@@ -20,4 +20,6 @@ public interface VoucherService {
 
     List<VoucherResponse> getAvailableVouchers(String userId);
 
+    UserVoucher redeemVoucherByPoints(String userId, String code);
+
 }

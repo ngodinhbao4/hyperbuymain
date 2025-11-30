@@ -192,7 +192,7 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_minigame_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=baotrong
-      - VOUCHER_SERVICE_URL=http://voucher-service:8089/voucher/vouchers
+      - VOUCHER_SERVICE_URL=http://voucher-service:8089
       - TZ=Asia/Ho_Chi_Minh
     depends_on:
       - db
@@ -211,6 +211,7 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/hyperbuy_voucher_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=baotrong
+      - MINIGAME_SERVICE_URL=http://minigame-service:8087
       - TZ=Asia/Ho_Chi_Minh
     depends_on:
       - db

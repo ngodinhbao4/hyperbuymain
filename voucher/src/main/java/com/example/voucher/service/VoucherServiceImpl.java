@@ -6,8 +6,13 @@ import com.example.voucher.entity.Voucher;
 import com.example.voucher.repository.UserVoucherRepository;
 import com.example.voucher.repository.VoucherRepository;
 import com.example.voucher.service.VoucherService;
+
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.example.voucher.client.LoyaltyClient;
+import com.example.voucher.client.LoyaltySpendPointsRequest;
+import com.example.voucher.client.LoyaltySpendPointsResponse;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -23,6 +28,7 @@ public class VoucherServiceImpl implements VoucherService {
 
     private final VoucherRepository voucherRepository;
     private final UserVoucherRepository userVoucherRepository;
+    private final LoyaltyClient loyaltyClient;
 
     @Override
     public Voucher createVoucher(Voucher voucher) {
@@ -169,19 +175,82 @@ public class VoucherServiceImpl implements VoucherService {
                     v.getStatus() == Voucher.Status.ACTIVE
             )
             .map(v -> new VoucherResponse(
-                    v.getId(),
-                    v.getCode(),
-                    // discountType: enum/String → toString để FE dễ dùng
-                    v.getDiscountType() != null ? v.getDiscountType().toString() : null,
-                    // discountValue trong DTO là Integer → giữ nguyên
-                    v.getDiscountValue(),
-                    v.getStartDate(),
-                    v.getEndDate(),
-                    v.getQuantity(),
-                    // status: enum → chuyển sang String
-                    v.getStatus() != null ? v.getStatus().toString() : null
-            ))
+        v.getId(),
+        v.getCode(),
+        v.getDiscountType() != null ? v.getDiscountType().toString() : null,
+        v.getDiscountValue(),
+        v.getStartDate(),
+        v.getEndDate(),
+        v.getQuantity(),
+        v.getStatus() != null ? v.getStatus().toString() : null,
+        v.getPointCost()   // 🔥 THÊM DÒNG NÀY
+))
             .collect(Collectors.toList());
 }
+
+    @Override
+    @Transactional
+    public UserVoucher redeemVoucherByPoints(String userId, String code) {
+        // 1️⃣ Lấy voucher theo code
+        Voucher voucher = voucherRepository.findByCode(code)
+                .orElseThrow(() -> new RuntimeException("Voucher không tồn tại"));
+
+        // 2️⃣ Kiểm tra trạng thái & thời gian, quantity giống calculateDiscount
+        LocalDateTime now = LocalDateTime.now();
+
+        if (voucher.getStatus() != Voucher.Status.ACTIVE) {
+            throw new RuntimeException("Voucher không còn hiệu lực");
+        }
+
+        if (voucher.getStartDate() != null && now.isBefore(voucher.getStartDate())) {
+            throw new RuntimeException("Voucher chưa bắt đầu áp dụng");
+        }
+
+        if (voucher.getEndDate() != null && now.isAfter(voucher.getEndDate())) {
+            throw new RuntimeException("Voucher đã hết hạn");
+        }
+
+        Integer quantity = voucher.getQuantity() != null ? voucher.getQuantity() : 0;
+        Integer used = voucher.getUsed() != null ? voucher.getUsed() : 0;
+        if (quantity > 0 && used >= quantity) {
+            throw new RuntimeException("Voucher đã hết lượt phát hành");
+        }
+
+        // 3️⃣ Kiểm tra pointCost
+        Integer pointCost = voucher.getPointCost();
+        if (pointCost == null || pointCost <= 0) {
+            throw new RuntimeException("Voucher này không hỗ trợ đổi bằng điểm");
+        }
+
+        // 4️⃣ Gọi minigame-service để TRỪ ĐIỂM
+        LoyaltySpendPointsRequest req = new LoyaltySpendPointsRequest(
+                userId,
+                pointCost,
+                "REDEEM_VOUCHER",
+                code
+        );
+
+        LoyaltySpendPointsResponse resp = loyaltyClient.spendPoints(req);
+
+        if (resp == null || !resp.isSuccess()) {
+            throw new RuntimeException(resp != null ? resp.getMessage() : "Không thể trừ điểm từ loyalty-service");
+        }
+
+        // 5️⃣ Nếu trừ điểm thành công => gán voucher cho user
+        UserVoucher userVoucher = UserVoucher.builder()
+                .userId(userId)
+                .voucher(voucher)
+                .build();
+        userVoucher = userVoucherRepository.save(userVoucher);
+
+        // 6️⃣ Tăng used của voucher
+        voucher.setUsed((voucher.getUsed() != null ? voucher.getUsed() : 0) + 1);
+        if (quantity > 0 && voucher.getUsed() >= quantity) {
+            voucher.setStatus(Voucher.Status.INACTIVE);
+        }
+        voucherRepository.save(voucher);
+
+        return userVoucher;
+    }
 
 }

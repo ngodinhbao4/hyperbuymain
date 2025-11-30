@@ -13,4 +13,5 @@ public interface UserVoucherRepository extends JpaRepository<UserVoucher, Long> 
 
     List<UserVoucher> findByUserIdAndUsedFalse(String userId);
 
+
 }

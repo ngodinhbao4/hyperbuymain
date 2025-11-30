@@ -45,4 +45,7 @@ public class Voucher {
     public enum Status {
         ACTIVE, INACTIVE, EXPIRED
     }
+
+        @Column(nullable = false)
+    private Integer pointCost;
 }
