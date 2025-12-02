@@ -65,7 +65,7 @@ public class SecurityConfigProduct {
                         // Ảnh public không cần token
                         .requestMatchers(publicImagesPathPattern).permitAll()
                         .requestMatchers("/api/v1/recommendations/guest").permitAll()
-
+                        .requestMatchers("/api/v1/products").permitAll()
                         // Nếu muốn mở GET product public cho khách vãng lai thì thêm:
                         // .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
 
