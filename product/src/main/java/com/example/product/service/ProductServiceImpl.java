@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -326,14 +325,41 @@ public ProductResponse updateProduct(Long id, ProductRequest productRequest, Mul
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Page<ProductResponse> findProducts(Long categoryId, String nameQuery, BigDecimal minPrice, BigDecimal maxPrice, Pageable pageable, String token) {
-        Page<Product> productPage = productRepository.searchProducts(categoryId, nameQuery, minPrice, maxPrice, pageable);
-        List<ProductResponse> productResponses = productPage.getContent().stream()
-                .map(product -> convertToProductResponseWithImageUrl(product, token))
-                .collect(Collectors.toList());
-        return new PageImpl<>(productResponses, pageable, productPage.getTotalElements());
-    }
+@Transactional(readOnly = true)
+public Page<ProductResponse> findProducts(
+        Long categoryId,
+        String nameQuery,
+        BigDecimal minPrice,
+        BigDecimal maxPrice,
+        Pageable pageable,
+        String token
+) {
+    // 1) Chuẩn hoá các tham số filter
+    Long normalizedCategoryId = normalizeCategoryId(categoryId);
+    String normalizedNameQuery = normalizeNameQuery(nameQuery);
+    BigDecimal[] normalizedPrices = normalizePriceRange(minPrice, maxPrice);
+    BigDecimal normalizedMinPrice = normalizedPrices[0];
+    BigDecimal normalizedMaxPrice = normalizedPrices[1];
+
+    logger.info(
+            "Tìm kiếm sản phẩm với categoryId={}, q='{}', minPrice={}, maxPrice={}, page={}, size={}",
+            normalizedCategoryId, normalizedNameQuery, normalizedMinPrice, normalizedMaxPrice,
+            pageable.getPageNumber(), pageable.getPageSize()
+    );
+
+    // 2) Gọi repository với tham số đã chuẩn hoá
+    Page<Product> productPage = productRepository.searchProducts(
+            normalizedCategoryId,
+            normalizedNameQuery,
+            normalizedMinPrice,
+            normalizedMaxPrice,
+            pageable
+    );
+
+    // 3) Map sang ProductResponse và giữ nguyên thông tin phân trang
+    return productPage.map(product -> convertToProductResponseWithImageUrl(product, token));
+}
+
 
     @Override
     @Transactional
@@ -417,4 +443,26 @@ public ProductResponse updateProduct(Long id, ProductRequest productRequest, Mul
                 .map(this::convertToProductMap)
                 .collect(Collectors.toList());
     }
+
+    private String normalizeNameQuery(String nameQuery) {
+    if (nameQuery == null) return null;
+    nameQuery = nameQuery.trim();
+    return nameQuery.isBlank() ? null : nameQuery;
+}
+
+// Chuẩn hoá categoryId: cho phép FE gửi 0 hoặc âm để hiểu là "tất cả"
+private Long normalizeCategoryId(Long categoryId) {
+    if (categoryId == null) return null;
+    return (categoryId <= 0) ? null : categoryId;
+}
+
+// Chuẩn hoá min/max price: nếu bị đảo thì tự động đổi chỗ
+private BigDecimal[] normalizePriceRange(BigDecimal minPrice, BigDecimal maxPrice) {
+    if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
+        BigDecimal tmp = minPrice;
+        minPrice = maxPrice;
+        maxPrice = tmp;
+    }
+    return new BigDecimal[]{minPrice, maxPrice};
+}
 }
