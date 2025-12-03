@@ -62,13 +62,33 @@ public class UserController {
                 .result(userService.getUser(userId))
                 .build();
     }
+
     @GetMapping("/username/{username}")
     public ApiResponRequest<UserResponse> getUserByUsername(@PathVariable("username") String username) {
-        return ApiResponRequest.<UserResponse>builder()
-            .result(userService.getUserByUsername(username))
-            .build();
-    }
 
+        // Lấy user bình thường từ service
+        UserResponse user = userService.getUserByUsername(username);
+
+        // Nếu user có role SELLER thì load store
+        if (user != null && user.getRole() != null && !user.getRole().isEmpty()) {
+            boolean isSeller = user.getRole().stream()
+                    .anyMatch(r -> "SELLER".equalsIgnoreCase(r.getName()));
+
+            if (isSeller) {
+                try {
+                    // Lấy store theo userId (ownerId)
+                    StoreResponse store = userService.getStoreByUserId(user.getId(), 0, 1);
+                    user.setStore(store);
+                } catch (Exception e) {
+                    log.error("Cannot load store for seller {}: {}", username, e.getMessage());
+                }
+            }
+        }
+
+        return ApiResponRequest.<UserResponse>builder()
+                .result(user)
+                .build();
+    }
     @PutMapping("/{userId}")
     ApiResponRequest<UserResponse> updateUser(@PathVariable String userId, @RequestBody @Valid UserUpdateRequest request) {
         return ApiResponRequest.<UserResponse>builder()

@@ -11,4 +11,5 @@ public interface OrderService {
     OrderResponse getOrderById(Long orderId);
     List<OrderResponse> getOrdersByUserId(String userId);
     OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus, String authorizationHeader);
+    OrderResponse updateOrderStatusBySeller(Long orderId, OrderStatus status, String token);
 }

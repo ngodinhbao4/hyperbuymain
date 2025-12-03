@@ -1,13 +1,21 @@
 package com.example.order.dto.response;
 
-import lombok.Data;
+import java.time.LocalDate;
+import java.util.Set;
+
+import lombok.*;
+import lombok.experimental.FieldDefaults;
 
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserResponse {
-    private String id; // UUID, e.g., fe4eb3cc-bc5f-42e6-a31e-a7f07d8be798
-    private String username;
-    private String name;
-    private String email;
-    private String dob;
-
+    String id;
+    String username;
+    String name;
+    String email;
+    LocalDate dob;
+    StoreResponse store;   // 🟢 QUAN TRỌNG: thêm field này
 }

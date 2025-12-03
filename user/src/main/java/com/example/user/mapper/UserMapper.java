@@ -11,8 +11,11 @@ import com.example.user.entity.User;
 
 @Mapper(componentModel = "spring")
 public interface UserMapper {
+
     User toUser(UserCreationRequest request);
 
+    // ❌ KHÔNG map store ở đây nữa
+    @Mapping(target = "store", ignore = true)
     UserResponse toUserResponse(User user);
 
     @Mapping(target = "role", ignore = true)

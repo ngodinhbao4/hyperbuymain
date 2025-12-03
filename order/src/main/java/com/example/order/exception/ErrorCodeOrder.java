@@ -40,6 +40,11 @@ public enum ErrorCodeOrder {
     PRODUCT_SERVICE_STOCK_UPDATE_FAILED(4305, "Failed to update stock via Product Service", HttpStatus.BAD_REQUEST),
     INSUFFICIENT_STOCK(4306, "Insufficient stock", HttpStatus.BAD_REQUEST),
     PRODUCT_NOT_AVAILABLE(4307, "Product not available", HttpStatus.BAD_REQUEST),
+    INVALID_STATUS_UPDATE(5001, "Không thể cập nhật trạng thái này",HttpStatus.BAD_REQUEST),
+    FORBIDDEN_SELLER_ORDER(5002, "Đơn hàng không thuộc quyền xử lý của seller",HttpStatus.BAD_REQUEST),
+    USER_SERVICE_UNREACHABLE(4308, "Dịch vụ người dùng không thể truy cập hoặc đã trả về lỗi trong quá trình xử lý đơn hàng", HttpStatus.SERVICE_UNAVAILABLE),
+    STORE_ID_NULL(4309, "Mã cửa hàng rỗng", HttpStatus.BAD_REQUEST),
+
     // Lỗi xác thực/ủy quyền (ví dụ: 44xx)
     ORDER_ACCESS_DENIED(4400, "Access to this order is denied", HttpStatus.FORBIDDEN),
     USER_NOT_AUTHENTICATED_FOR_ORDER(4401, "User not authenticated for order operation.", HttpStatus.UNAUTHORIZED)

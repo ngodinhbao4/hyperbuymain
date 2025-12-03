@@ -1,5 +1,6 @@
 package com.example.order.service.client;
 
+import com.example.order.dto.CategoryDTO;
 import com.example.order.dto.ProductDTO;
 import com.example.order.dto.response.ApiResponRequest;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -30,5 +31,11 @@ public interface ProductServiceClient {
             @PathVariable Long productId,
             @RequestBody UpdateStockRequest stockRequest,
             @RequestHeader("Authorization") String authorization
+    );
+
+    @GetMapping("/api/v1/products/{productId}/category")
+    CategoryDTO getCategoryByProductId(
+            @PathVariable Long productId,
+            @RequestHeader("Authorization") String token
     );
 }
