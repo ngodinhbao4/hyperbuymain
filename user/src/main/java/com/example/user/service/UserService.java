@@ -80,8 +80,25 @@ public class UserService {
     }
 
     public UserResponse getUserByUsername(String username) {
-        return userMapper.toUserResponse(userRepository.findByUsername(username)
-            .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với username: " + username)));
+        var user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với username: " + username));
+
+        // 1) Map các field cơ bản
+        UserResponse dto = userMapper.toUserResponse(user);
+
+        // 2) Lấy thông tin store bằng logic có sẵn trong service
+        try {
+            // dùng luôn hàm getStoreByUserId mà bạn đã expose cho controller
+            // page = 0, size = 1 là đủ để lấy thông tin store
+            var storeResponse = this.getStoreByUserId(user.getId(), 0, 1);
+            dto.setStore(storeResponse);
+        } catch (Exception ex) {
+            // nếu user không phải seller hoặc không có store thì cứ để store = null
+            // có thể log nếu muốn:
+            // log.warn("User {} không có store / không phải seller", username);
+        }
+
+        return dto;
     }
 
     public UserResponse getMyInfo() {
@@ -105,9 +122,6 @@ public class UserService {
 
         userMapper.updateUser(user, request);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-
-        var role = roleRepository.findAllById(request.getRole());
-        user.setRole(new HashSet<>(role));
 
         return userMapper.toUserResponse(userRepository.save(user));
     }

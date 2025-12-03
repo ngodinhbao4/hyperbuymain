@@ -40,5 +40,9 @@ public class OrderItem {
     @Column(length = 255) // Thêm trường để lưu URL hình ảnh
     private String imageUrl;
 
+    // 🔥 THÊM FIELD NÀY
+    @Column(name = "store_id", nullable = false, length = 36)
+    private String storeId;
+
     // không cần createdAt, updatedAt ở đây nếu không quá cần thiết
 }

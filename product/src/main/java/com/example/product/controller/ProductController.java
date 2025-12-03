@@ -74,7 +74,7 @@ public class ProductController {
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @PageableDefault(size = 10, sort = "name", direction = Sort.Direction.ASC) Pageable pageable,
-            @RequestHeader(value = "Authorization", required = true) String token) {
+            @RequestHeader(value = "Authorization", required = false) String token) {
         Page<ProductResponse> productPage = productService.findProducts(categoryId, q, minPrice, maxPrice, pageable, token);
         return ResponseEntity.ok(productPage);
     }

@@ -5,7 +5,6 @@ import com.example.voucher.entity.UserVoucher;
 import com.example.voucher.entity.Voucher;
 import com.example.voucher.repository.UserVoucherRepository;
 import com.example.voucher.repository.VoucherRepository;
-import com.example.voucher.service.VoucherService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -66,8 +65,8 @@ public class VoucherServiceImpl implements VoucherService {
         }
 
         UserVoucher userVoucher = userVoucherRepository
-                .findByUserIdAndVoucher_CodeAndUsedFalse(userId, code)
-                .orElse(null);
+            .findFirstByUserIdAndVoucher_CodeAndUsedFalseOrderByIdAsc(userId, code)
+            .orElse(null);
 
         if (userVoucher == null) {
             // user không có voucher này hoặc đã dùng
@@ -133,13 +132,12 @@ public class VoucherServiceImpl implements VoucherService {
     @Override
     public void markVoucherUsed(String userId, String code) {
         UserVoucher userVoucher = userVoucherRepository
-                .findByUserIdAndVoucher_CodeAndUsedFalse(userId, code)
+                .findFirstByUserIdAndVoucher_CodeAndUsedFalseOrderByIdAsc(userId, code)
                 .orElse(null);
 
         if (userVoucher == null) {
-            return;
+            return; // không có voucher unused thì thôi
         }
-
         Voucher voucher = userVoucher.getVoucher();
 
         // đánh dấu userVoucher

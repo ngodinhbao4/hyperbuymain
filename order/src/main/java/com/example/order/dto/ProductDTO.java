@@ -16,4 +16,11 @@ public class ProductDTO {
     private boolean active; // Tương ứng với isActive từ entity Product
     private boolean deleted; // Tương ứng với isDeleted từ entity Product
     private String imageUrl;
+    private SellerInfo sellerInfo;
+    @Data
+    public static class SellerInfo {
+        private String storeId;
+        private String userId;
+        private String username;
+    }
 }

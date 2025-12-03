@@ -45,7 +45,7 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ✅ API admin-only
-                .requestMatchers("/voucher/vouchers").hasRole("ADMIN")
+                .requestMatchers("/voucher/vouchers").permitAll()
                 .requestMatchers("/vouchers/redeem-by-points/**").permitAll()
                 .requestMatchers("/vouchers/user/**").permitAll()
                 .requestMatchers("/vouchers/redeem-by-points/**").permitAll()

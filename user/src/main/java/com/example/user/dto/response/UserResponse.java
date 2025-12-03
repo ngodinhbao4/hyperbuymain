@@ -19,4 +19,5 @@ public class UserResponse {
     String email;
     LocalDate dob;
     Set<RoleResponse> role;
+    private StoreResponse store;
 }

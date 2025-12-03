@@ -6,10 +6,13 @@ import com.example.order.dto.response.OrderResponse;
 import com.example.order.entity.OrderStatus;
 import com.example.order.exception.ErrorCodeOrder;
 import com.example.order.exception.OrderException;
+import com.example.order.service.OrderQueryService;
 import com.example.order.service.OrderService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,6 +20,7 @@ import org.springframework.security.core.Authentication;
 // import org.springframework.security.oauth2.jwt.Jwt; // Nếu cần truy cập trực tiếp vào JWT claims
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +30,7 @@ import java.util.Map;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderQueryService orderQueryService;
     // Giả sử bạn có OrderSecurityService được inject hoặc có sẵn như một bean
     // private final OrderSecurityService orderSecurityService; // Nếu không dùng @beanName trong @PreAuthorize
 
@@ -128,4 +133,26 @@ public class OrderController {
             throw new OrderException(ErrorCodeOrder.INVALID_ORDER_REQUEST, "Giá trị trạng thái đơn hàng không hợp lệ: " + newStatusString);
         }
     }
+
+    @GetMapping("/seller/revenue/daily")
+    public ResponseEntity<?> dailyRevenue(
+            @RequestParam String storeId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end
+    ) {
+        return ResponseEntity.ok(orderQueryService.getDailyRevenue(storeId, start, end));
+    }
+
+    @PatchMapping("/{orderId}/status")
+    @PreAuthorize("hasAuthority('ROLE_SELLER')")
+    public ResponseEntity<?> updateOrderStatus(
+            @PathVariable Long orderId,
+            @RequestParam OrderStatus status,
+            @RequestHeader("Authorization") String token
+    ) {
+        var updated = orderService.updateOrderStatusBySeller(orderId, status, token);
+        return ResponseEntity.ok(updated);
+    }
+
+
 }

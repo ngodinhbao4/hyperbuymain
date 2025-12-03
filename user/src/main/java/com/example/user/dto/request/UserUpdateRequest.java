@@ -20,5 +20,4 @@ public class UserUpdateRequest {
     String name;
     String email;
     LocalDate dob;
-    List<String> role;
 }

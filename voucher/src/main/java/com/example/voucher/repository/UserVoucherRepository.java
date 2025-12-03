@@ -7,7 +7,10 @@ import java.util.Optional;
 
 public interface UserVoucherRepository extends JpaRepository<UserVoucher, Long> {
 
-    Optional<UserVoucher> findByUserIdAndVoucher_CodeAndUsedFalse(String userId, String code);
+    Optional<UserVoucher> findFirstByUserIdAndVoucher_CodeAndUsedFalseOrderByIdAsc(
+            String userId,
+            String code
+    );
     
     List<UserVoucher> findByUserId(String userId);
 

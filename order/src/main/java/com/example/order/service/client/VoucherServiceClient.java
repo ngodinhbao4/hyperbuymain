@@ -25,7 +25,7 @@ public interface VoucherServiceClient {
     );
 
     // ✅ Đánh dấu đã dùng voucher
-    @PostMapping("voucher/vouchers/use")
+    @PostMapping("/voucher/vouchers/use")
     void markVoucherUsed(
             @RequestParam("userId") String userId,
             @RequestParam("code") String code,

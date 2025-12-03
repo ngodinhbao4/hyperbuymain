@@ -29,6 +29,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -398,6 +400,9 @@ if (createOrderRequest.getItems() == null || createOrderRequest.getItems().isEmp
         orderItem.setProductId(product.getId());
         orderItem.setQuantity(quantity);
         orderItem.setPrice(product.getPrice());
+        orderItem.setStoreId(product.getSellerInfo().getStoreId());  // ✔ đúng JSON
+
+        
 
         String imageUrl = product.getImageUrl();
         if (imageUrl != null && imageUrl.contains("productservice:8081")) {
@@ -632,24 +637,166 @@ if (createOrderRequest.getItems() == null || createOrderRequest.getItems().isEmp
         return dto;
     }
 
-    private void adjustCartAfterCheckout(
-        String userId,
-        List<CartItemDTO> purchasedItems,
-        Long orderId,
-        String authorizationHeader
-) {
-    try {
-        List<CheckoutCartItemRequest> payload = purchasedItems.stream()
-                .map(i -> new CheckoutCartItemRequest(i.getProductId(), i.getQuantity()))
-                .collect(Collectors.toList());
+        private void adjustCartAfterCheckout(
+            String userId,
+            List<CartItemDTO> purchasedItems,
+            Long orderId,
+            String authorizationHeader
+    ) {
+        try {
+            List<CheckoutCartItemRequest> payload = purchasedItems.stream()
+                    .map(i -> new CheckoutCartItemRequest(i.getProductId(), i.getQuantity()))
+                    .collect(Collectors.toList());
 
-        cartServiceClient.removeItemsAfterCheckout(payload, authorizationHeader);
-        logger.info("Adjusted cart for user {} after order {} ({} items).",
-                userId, orderId, purchasedItems.size());
-    } catch (Exception e) {
-        logger.error("Failed to adjust cart for user {} after order {}: {}",
-                userId, orderId, e.getMessage(), e);
-        // không throw để đơn vẫn thành công
+            cartServiceClient.removeItemsAfterCheckout(payload, authorizationHeader);
+            logger.info("Adjusted cart for user {} after order {} ({} items).",
+                    userId, orderId, purchasedItems.size());
+        } catch (Exception e) {
+            logger.error("Failed to adjust cart for user {} after order {}: {}",
+                    userId, orderId, e.getMessage(), e);
+            // không throw để đơn vẫn thành công
+        }
     }
-}
+
+    @Override
+    @Transactional
+    public OrderResponse updateOrderStatusBySeller(Long orderId, OrderStatus newStatus, String authorizationHeader) {
+
+        logger.info("Seller is attempting to update status for order ID: {} to {}", orderId, newStatus);
+
+        // 1) Lấy order
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderException(
+                        ErrorCodeOrder.ORDER_NOT_FOUND,
+                        "Order not found with ID: " + orderId
+                ));
+
+        // 2) Lấy username seller từ SecurityContext
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            throw new OrderException(
+                    ErrorCodeOrder.USER_NOT_FOUND,
+                    "Cannot determine current seller from security context."
+            );
+        }
+        String sellerUsername = auth.getName();   // ví dụ: "Kid"
+        logger.debug("Current seller username from SecurityContext: {}", sellerUsername);
+
+        // 3) Gọi user-service lấy thông tin seller + storeId
+        ApiResponRequest<UserResponse> sellerRes;
+        try {
+            sellerRes = userServiceClient.getUserByUsername(sellerUsername, authorizationHeader);
+
+            if (sellerRes == null || sellerRes.getResult() == null) {
+                logger.error("Seller user is null for username: {}", sellerUsername);
+                throw new OrderException(
+                        ErrorCodeOrder.USER_NOT_FOUND,
+                        "Seller user not found for username: " + sellerUsername
+                );
+            }
+
+            UserResponse seller = sellerRes.getResult();
+
+            if (seller.getStore() == null || seller.getStore().getStoreId() == null) {
+                logger.error("Seller user or storeId is null for username: {}", sellerUsername);
+                throw new OrderException(
+                        ErrorCodeOrder.STORE_ID_NULL,
+                        "Store ID is null for seller username: " + sellerUsername
+                );
+            }
+
+            String sellerStoreId = seller.getStore().getStoreId();
+            logger.debug("Seller storeId = {} for seller username {}", sellerStoreId, sellerUsername);
+
+            // 4) Kiểm tra order có chứa item thuộc store này không
+            boolean hasItemOfSeller = order.getItems().stream()
+                    .anyMatch(i -> sellerStoreId.equals(i.getStoreId()));
+
+            if (!hasItemOfSeller) {
+                logger.warn("Seller {} (storeId = {}) tried to update order {} that does not belong to them.",
+                        sellerUsername, sellerStoreId, orderId);
+                throw new OrderException(
+                        ErrorCodeOrder.FORBIDDEN_SELLER_ORDER,
+                        "You are not allowed to update this order."
+                );
+            }
+
+        } catch (FeignException e) {
+            logger.error("Failed to fetch seller info for username: {}. Error: {}", sellerUsername, e.getMessage(), e);
+            throw new OrderException(
+                    ErrorCodeOrder.USER_SERVICE_UNREACHABLE,
+                    "Could not fetch seller info for username: " + sellerUsername,
+                    e
+            );
+        }
+
+        // 5) Kiểm tra trạng thái hợp lệ
+        if (order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.DELIVERED) {
+            throw new OrderException(
+                    ErrorCodeOrder.INVALID_STATUS_UPDATE,
+                    "Cannot change status of a cancelled or delivered order."
+            );
+        }
+
+        // 6) Cập nhật trạng thái
+        order.setStatus(newStatus);
+        order.setUpdatedAt(LocalDateTime.now());
+        Order updatedOrder;
+        try {
+            updatedOrder = orderRepository.save(order);
+        } catch (Exception e) {
+            logger.error("Failed to update status for order {}: {}", orderId, e.getMessage(), e);
+            throw new OrderException(
+                    ErrorCodeOrder.ORDER_UPDATE_FAILED,
+                    "Could not save updated order status.",
+                    e
+            );
+        }
+
+        logger.info("Order ID {} status updated to {} by seller {}.",
+                updatedOrder.getId(), updatedOrder.getStatus(), sellerUsername);
+
+        // 7) Gửi event RabbitMQ cho BUYER (customer) – dùng UUID
+        try {
+            // updatedOrder.getUserId() đang là username của khách (vd: "hbao")
+            String buyerUsername = updatedOrder.getUserId();
+            logger.debug("Fetching buyer info for username: {}", buyerUsername);
+
+            ApiResponRequest<UserResponse> buyerRes =
+                    userServiceClient.getUserByUsername(buyerUsername, authorizationHeader);
+
+            if (buyerRes == null || buyerRes.getResult() == null || buyerRes.getResult().getId() == null) {
+                logger.error("Buyer not found or id is null for username: {}", buyerUsername);
+                throw new OrderException(
+                        ErrorCodeOrder.USER_NOT_FOUND,
+                        "Buyer not found for username: " + buyerUsername
+                );
+            }
+
+            String buyerIdForNotification = buyerRes.getResult().getId();  // UUID
+
+            OrderEvent event = new OrderEvent();
+            event.setId(updatedOrder.getId());
+            event.setUserId(buyerIdForNotification);   // ✅ Gửi UUID giống các chỗ khác
+            event.setStatus(updatedOrder.getStatus().name());
+            event.setAuthorizationHeader(authorizationHeader);
+            logger.debug("Sending OrderEvent for seller update: {}", event);
+            rabbitTemplate.convertAndSend("order_notifications", event);
+
+        } catch (FeignException e) {
+            logger.error("Failed to fetch buyer info for username from order: {}. Error: {}",
+                    updatedOrder.getUserId(), e.getMessage(), e);
+            // Có thể throw hoặc chỉ log, tuỳ bạn muốn noti fail có làm fail API hay không
+        }
+
+
+        // 8) Nếu seller CANCELLED order → hoàn stock
+        if (newStatus == OrderStatus.CANCELLED) {
+            handleOrderCancellationStockAdjustment(updatedOrder, authorizationHeader);
+        }
+
+        // 9) Trả response
+        return mapOrderToResponseDTO(updatedOrder);
+    }
+
 }

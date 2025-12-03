@@ -73,6 +73,7 @@ public class Order {
 
     private String paymentMethod;
     private String paymentTransactionId;
+    
 
     @Column(updatable = false)
     private LocalDateTime createdAt;
