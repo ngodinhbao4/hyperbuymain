@@ -74,23 +74,6 @@ public class RatingController {
         return ResponseEntity.ok(response);
     }
 
-    // 🟢 Xem các rating của chính mình (sau khi mua)
-    @GetMapping("/my-ratings")
-    public ResponseEntity<ApiResponse<List<RatingResponse>>> getMyRatings(
-            @AuthenticationPrincipal Jwt jwt
-    ) {
-        String username = jwt.getSubject();
-        List<RatingResponse> ratings = ratingService.getRatingsByUser(username);
-
-        ApiResponse<List<RatingResponse>> response = ApiResponse.<List<RatingResponse>>builder()
-                .code(1000)
-                .message("Lấy danh sách đánh giá của bạn thành công")
-                .result(ratings)
-                .build();
-
-        return ResponseEntity.ok(response);
-    }
-
     @DeleteMapping("/my/{ratingId}")
         public ResponseEntity<ApiResponse<Void>> deleteMyRating(
                 @PathVariable Long productId,
