@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -67,6 +68,7 @@ public class SecurityConfigProduct {
                         .requestMatchers(publicImagesPathPattern).permitAll()
                         .requestMatchers("/api/v1/recommendations/guest").permitAll()
                         .requestMatchers("/api/v1/products").permitAll()
+                        
                         // Nếu muốn mở GET product public cho khách vãng lai thì thêm:
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
