@@ -276,10 +276,6 @@ if (createOrderRequest.getItems() == null || createOrderRequest.getItems().isEmp
         return mapOrderToResponseDTO(savedOrder);
     }
 
-    /**
-     * ✅ Nếu request.items null/empty → dùng toàn bộ cartItems.
-     * ✅ Nếu có request.items          → chỉ lấy những productId có trong cart và quantity hợp lệ.
-     */
     private List<CartItemDTO> resolveSelectedItems(CreateOrderRequest request, List<CartItemDTO> cartItems) {
         List<CartItemDTO> fromRequest = request.getItems();
         if (fromRequest == null || fromRequest.isEmpty()) {
@@ -451,7 +447,7 @@ if (createOrderRequest.getItems() == null || createOrderRequest.getItems().isEmp
     }
 
     private void confirmOrder(Order order) {
-        order.setStatus(OrderStatus.CONFIRMED);
+        order.setStatus(OrderStatus.PENDING);
         try {
             orderRepository.save(order);
         } catch (Exception e) {
@@ -797,6 +793,99 @@ if (createOrderRequest.getItems() == null || createOrderRequest.getItems().isEmp
 
         // 9) Trả response
         return mapOrderToResponseDTO(updatedOrder);
+    }
+
+    private String getCurrentSellerStoreId(String authorizationHeader) {
+        // Lấy username từ SecurityContext
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            throw new OrderException(
+                    ErrorCodeOrder.USER_NOT_FOUND,
+                    "Cannot determine current seller from security context."
+            );
+        }
+        String sellerUsername = auth.getName();
+        logger.debug("Current seller username from SecurityContext: {}", sellerUsername);
+
+        // Gọi user-service lấy thông tin seller
+        ApiResponRequest<UserResponse> sellerRes;
+        try {
+            sellerRes = userServiceClient.getUserByUsername(sellerUsername, authorizationHeader);
+        } catch (FeignException e) {
+            logger.error("Failed to fetch seller info for username: {}. Error: {}",
+                    sellerUsername, e.getMessage(), e);
+            throw new OrderException(
+                    ErrorCodeOrder.USER_SERVICE_UNREACHABLE,
+                    "Could not fetch seller info for username: " + sellerUsername,
+                    e
+            );
+        }
+
+        if (sellerRes == null || sellerRes.getResult() == null) {
+            logger.error("Seller not found from user-service for username: {}", sellerUsername);
+            throw new OrderException(
+                    ErrorCodeOrder.USER_NOT_FOUND,
+                    "Seller not found for username: " + sellerUsername
+            );
+        }
+
+        UserResponse seller = sellerRes.getResult();
+        if (seller.getStore() == null || seller.getStore().getStoreId() == null) {
+            logger.error("Seller storeId is null for username: {}", sellerUsername);
+            throw new OrderException(
+                    ErrorCodeOrder.STORE_ID_NULL,
+                    "Store ID is null for seller username: " + sellerUsername
+            );
+        }
+
+        String storeId = seller.getStore().getStoreId();
+        logger.debug("Seller storeId = {} for seller username {}", storeId, sellerUsername);
+        return storeId;
+    }
+
+        @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getOrdersForSellerByStatus(OrderStatus status, String authorizationHeader) {
+        String sellerStoreId = getCurrentSellerStoreId(authorizationHeader);
+
+        logger.info("Seller with storeId {} is loading orders with status {}", sellerStoreId, status);
+
+        List<Order> orders = orderRepository.findByStoreIdAndStatus(sellerStoreId, status);
+
+        return orders.stream()
+                .map(this::mapOrderToResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+        @Override
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderForSellerById(Long orderId, String authorizationHeader) {
+        String sellerStoreId = getCurrentSellerStoreId(authorizationHeader);
+
+        logger.info("Seller with storeId {} is requesting order detail for id {}", sellerStoreId, orderId);
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderException(
+                        ErrorCodeOrder.ORDER_NOT_FOUND,
+                        "Order not found with ID: " + orderId
+                ));
+
+        // Đảm bảo đơn này có ít nhất 1 item thuộc store của seller
+        boolean hasItemOfSeller = order.getItems().stream()
+                .anyMatch(i -> sellerStoreId.equals(i.getStoreId()));
+
+        if (!hasItemOfSeller) {
+            logger.warn("Order {} does not contain items for storeId {}. Access denied.",
+                    orderId, sellerStoreId);
+
+            // Có thể dùng ERROR khác, nhưng để chắc chắn không lỗi enum thì dùng lại ORDER_NOT_FOUND
+            throw new OrderException(
+                    ErrorCodeOrder.ORDER_NOT_FOUND,
+                    "Order not found for current seller store."
+            );
+        }
+
+        return mapOrderToResponseDTO(order);
     }
 
 }
