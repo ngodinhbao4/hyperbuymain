@@ -16,6 +16,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.http.HttpMethod;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -67,7 +68,9 @@ public class SecurityConfigProduct {
                         .requestMatchers("/api/v1/recommendations/guest").permitAll()
                         .requestMatchers("/api/v1/products").permitAll()
                         // Nếu muốn mở GET product public cho khách vãng lai thì thêm:
-                        // .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
+
 
                         // Các request còn lại yêu cầu JWT
                         .anyRequest().authenticated()
