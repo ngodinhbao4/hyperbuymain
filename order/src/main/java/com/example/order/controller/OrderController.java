@@ -12,6 +12,7 @@ import com.example.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -154,5 +155,26 @@ public class OrderController {
         return ResponseEntity.ok(updated);
     }
 
+        // ✅ Seller xem danh sách đơn theo trạng thái
+    @GetMapping("/seller")
+    @PreAuthorize("hasAuthority('ROLE_SELLER')")
+    public ResponseEntity<List<OrderResponse>> getOrdersForSeller(
+            @RequestParam(name = "status", required = false) OrderStatus status,
+            @RequestHeader("Authorization") String token
+    ) {
+        List<OrderResponse> orders = orderService.getOrdersForSellerByStatus(status, token);
+        return ResponseEntity.ok(orders);
+    }
+
+        // ✅ Seller xem chi tiết 1 đơn theo ID (chỉ nếu thuộc store của seller)
+    @GetMapping("/seller/{orderId}")
+    @PreAuthorize("hasAuthority('ROLE_SELLER')")
+    public ResponseEntity<OrderResponse> getOrderForSellerById(
+            @PathVariable Long orderId,
+            @RequestHeader("Authorization") String token
+    ) {
+        OrderResponse order = orderService.getOrderForSellerById(orderId, token);
+        return ResponseEntity.ok(order);
+    }
 
 }
