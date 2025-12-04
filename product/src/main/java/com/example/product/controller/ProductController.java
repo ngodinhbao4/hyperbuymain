@@ -3,9 +3,12 @@ package com.example.product.controller;
 import com.example.product.dto.request.ProductRequest;
 import com.example.product.dto.response.ApiResponse;
 import com.example.product.dto.response.ProductResponse;
+import com.example.product.dto.response.RatingResponse;
 import com.example.product.dto.request.UpdateStockRequest;
 import com.example.product.service.ProductService;
 import com.example.product.service.ProductViewHistoryService;
+import com.example.product.service.RatingService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +41,7 @@ public class ProductController {
     private final ProductService productService;
     private static final Logger logger = LoggerFactory.getLogger(ProductController.class);
     private final ProductViewHistoryService productViewHistoryService;
+    private final RatingService ratingService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ProductResponse> createProduct(
@@ -181,4 +185,31 @@ public class ProductController {
 
         return ResponseEntity.ok(response);
     }
+
+    // 🟢 Xem các rating của chính mình (sau khi mua)
+    @GetMapping("/my-ratings")
+    public ResponseEntity<ApiResponse<List<RatingResponse>>> getMyRatings(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        if (jwt == null) {
+            ApiResponse<List<RatingResponse>> res = ApiResponse.<List<RatingResponse>>builder()
+                    .code(401)
+                    .message("Bạn cần đăng nhập để xem danh sách đánh giá của mình")
+                    .result(null)
+                    .build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(res);
+        }
+
+        String username = jwt.getSubject();
+        List<RatingResponse> ratings = ratingService.getRatingsByUser(username);
+
+        ApiResponse<List<RatingResponse>> response = ApiResponse.<List<RatingResponse>>builder()
+                .code(1000)
+                .message("Lấy danh sách đánh giá của bạn thành công")
+                .result(ratings)
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
 }
