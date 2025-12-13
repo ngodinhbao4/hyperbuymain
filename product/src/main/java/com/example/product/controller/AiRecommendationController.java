@@ -38,18 +38,35 @@ public class AiRecommendationController {
     }
 
     // ✅ Gợi ý cho khách (chưa đăng nhập) -> popular / trending
-    @GetMapping("/guest")
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> getGuestRecommendations(
-            @RequestParam(defaultValue = "12") int limit
-    ) {
-        List<ProductResponse> products = aiRecommendationService.getRecommendationsForGuest(limit);
+        @GetMapping("/guest")
+        public ResponseEntity<ApiResponse<List<ProductResponse>>> getGuestRecommendations(
+                @RequestParam(defaultValue = "12") int limit
+        ) {
+                List<ProductResponse> products = aiRecommendationService.getRecommendationsForGuest(limit);
+
+                ApiResponse<List<ProductResponse>> response = ApiResponse.<List<ProductResponse>>builder()
+                        .code(1000)
+                        .message("Gợi ý AI cho khách chưa đăng nhập")
+                        .result(products)
+                        .build();
+
+                return ResponseEntity.ok(response);
+        }
+
+        @GetMapping("/similar/{productId}")
+        public ResponseEntity<ApiResponse<List<ProductResponse>>> getSimilarProducts(
+                @PathVariable Long productId,
+                @RequestParam(defaultValue = "10") int limit
+        ) {
+        List<ProductResponse> products = aiRecommendationService.getSimilarProducts(productId, limit);
 
         ApiResponse<List<ProductResponse>> response = ApiResponse.<List<ProductResponse>>builder()
                 .code(1000)
-                .message("Gợi ý AI cho khách chưa đăng nhập")
+                .message("Sản phẩm tương tự cho productId=" + productId)
                 .result(products)
                 .build();
 
         return ResponseEntity.ok(response);
-    }
+        }
+    
 }

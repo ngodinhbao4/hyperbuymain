@@ -129,4 +129,27 @@ public class AiRecommendationServiceImpl implements AiRecommendationService {
 
         return dto;
     }
+
+    @Override
+    public List<ProductResponse> getSimilarProducts(Long productId, int limit) {
+        List<Long> ids = callRecommenderSimilar(productId, limit);
+        return fetchProductsKeepOrder(ids);
+    }
+
+    private List<Long> callRecommenderSimilar(Long productId, int limit) {
+        try {
+            String url = RECOMMENDER_BASE_URL + "/similar?product_id=" + productId + "&n=" + limit;
+
+            ResponseEntity<List<Long>> res = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    new ParameterizedTypeReference<List<Long>>() {}
+            );
+
+            return res.getBody() != null ? res.getBody() : List.of();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
 }

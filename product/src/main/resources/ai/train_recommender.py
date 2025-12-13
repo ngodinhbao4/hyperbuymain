@@ -255,6 +255,37 @@ def recommend_for_user(model, X_user_item, user_to_idx, idx_to_item, username, N
             break
 
     return final
+
+
+def similar_items(model, item_ext_id, item_to_idx, idx_to_item, N=10):
+    if item_ext_id not in item_to_idx:
+        return []
+
+    i = int(item_to_idx[item_ext_id])
+
+    # implicit có hàm similar_items sẵn
+    recs = model.similar_items(i, N=N+1)  # gồm cả chính nó
+    # recs có thể là (ids, scores) hoặc list tuple, nên parse giống recommend
+
+    item_indices = None
+    if isinstance(recs, tuple) and len(recs) == 2:
+        ids, _scores = recs
+        item_indices = np.asarray(ids)
+    else:
+        arr = np.asarray(recs)
+        item_indices = arr[:, 0] if arr.ndim == 2 else arr
+
+    out = []
+    for j in item_indices:
+        j = int(j)
+        if j == i:
+            continue
+        if j in idx_to_item:
+            out.append(int(idx_to_item[j]))
+        if len(out) >= N:
+            break
+    return out
+
 # =============================
 # 6. MAIN
 # =============================
@@ -286,6 +317,10 @@ def main():
 
     print(f"Demo user: {demo_user}")
     print("Recommended product_ids:", rec_products)
+
+    demo_item = list(item_to_idx.keys())[0]
+    print("Similar to item", demo_item, "=>", similar_items(model, demo_item, item_to_idx, idx_to_item, N=10))
+
 
     print("=== DONE ===")
 

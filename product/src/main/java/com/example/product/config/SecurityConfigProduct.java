@@ -72,6 +72,7 @@ public class SecurityConfigProduct {
                         // Nếu muốn mở GET product public cho khách vãng lai thì thêm:
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/recommendations/similar/**").permitAll()
 
 
                         // Các request còn lại yêu cầu JWT

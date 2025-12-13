@@ -49,3 +49,32 @@ def recommend(username: str, n: int = 10):
 def recommend_guest(n: int = 10):
     # fallback đơn giản: top popular (ở đây demo: random)
     return list(idx_to_item.values())[:n]
+
+
+
+@app.get("/similar", response_model=List[int])
+def similar(product_id: int, n: int = 10):
+    # item-to-item bằng implicit built-in similar_items
+    if product_id not in item_to_idx:
+        return []
+
+    i = int(item_to_idx[product_id])
+
+    recs = model.similar_items(i, N=n + 1)  # có cả chính nó
+    # recs có thể là (ids, scores) hoặc list tuples
+    if isinstance(recs, tuple) and len(recs) == 2:
+        ids, _scores = recs
+        ids = list(ids)
+    else:
+        ids = [int(x[0]) for x in recs]  # Nx2
+
+    out = []
+    for j in ids:
+        j = int(j)
+        if j == i:
+            continue
+        out.append(int(idx_to_item[j]))
+        if len(out) >= n:
+            break
+
+    return out
