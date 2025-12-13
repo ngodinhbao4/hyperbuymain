@@ -1,124 +1,155 @@
 package com.example.product.service.impl;
 
 import com.example.product.dto.response.ProductResponse;
-import com.example.product.entity.AiRecommendation;
 import com.example.product.entity.Product;
-import com.example.product.repository.AiRecommendationRepository;
 import com.example.product.repository.ProductRepository;
 import com.example.product.service.AiRecommendationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AiRecommendationServiceImpl implements AiRecommendationService {
 
-    private final AiRecommendationRepository aiRecommendationRepository;
+    // URL Python FastAPI recommender
+    // Ví dụ: http://localhost:8000
+    private static final String RECOMMENDER_BASE_URL = "http://host.docker.internal:8000";
+
     private final ProductRepository productRepository;
 
+    private final RestTemplate restTemplate = new RestTemplate();
+
     @Override
-    @Transactional(readOnly = true)
     public List<ProductResponse> getRecommendationsForUser(String username, int limit) {
+        List<Long> productIds = callRecommenderForUser(username, limit);
+        System.out.println("AI /recommend ids = " + productIds);
 
-    // 1. Lấy top 50 sản phẩm có score cao nhất
-        List<AiRecommendation> recs =
-                aiRecommendationRepository.findTop50ByUsernameOrderByPredictedScoreDesc(username);
-
-// ⭐ Fallback nếu user không có dữ liệu AI
-        if (recs.isEmpty()) {
-            return getRecommendationsForGuest(limit);   // ✔ ĐÚNG
+        if (productIds == null || productIds.isEmpty()) {
+            productIds = callRecommenderForGuest(limit);
+            System.out.println("AI /guest ids = " + productIds);
         }
 
-// 🔥 Shuffle nhẹ để thay đổi kết quả mỗi lần load
-        Collections.shuffle(recs);
+        List<ProductResponse> rs = fetchProductsKeepOrder(productIds);
+        System.out.println("Returned products size = " + rs.size());
+        return rs;
+    }
 
-// 2. Giới hạn số lượng trả về
-        if (limit > 0 && recs.size() > limit) {
-            recs = recs.subList(0, limit);
+
+    @Override
+    public List<ProductResponse> getRecommendationsForGuest(int limit) {
+        List<Long> productIds = callRecommenderForGuest(limit);
+        return fetchProductsKeepOrder(productIds);
+    }
+
+    // =========================
+    // CALL PYTHON API
+    // =========================
+    private List<Long> callRecommenderForUser(String username, int limit) {
+        try {
+            String url = RECOMMENDER_BASE_URL + "/recommend?username=" + username + "&n=" + limit;
+
+            ResponseEntity<List<Long>> res = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    new ParameterizedTypeReference<List<Long>>() {}
+            );
+
+            return res.getBody() != null ? res.getBody() : List.of();
+        } catch (Exception e) {
+            return List.of();
         }
+    }
 
-// 3. Lấy productId
-        List<Long> productIds = recs.stream()
-                .map(AiRecommendation::getProductId)
-                .collect(Collectors.toList());
+    private List<Long> callRecommenderForGuest(int limit) {
+        try {
+            String url = RECOMMENDER_BASE_URL + "/guest?n=" + limit;
 
-// 4. Query Product từ DB
+            ResponseEntity<List<Long>> res = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    new ParameterizedTypeReference<List<Long>>() {}
+            );
+
+            return res.getBody() != null ? res.getBody() : List.of();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    // =========================
+    // DB FETCH + KEEP ORDER
+    // =========================
+    private List<ProductResponse> fetchProductsKeepOrder(List<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) return List.of();
+
+        System.out.println("AI ids = " + productIds);
         List<Product> products = productRepository.findAllById(productIds);
+        System.out.println("Found products = " + products.size());
 
-        Map<Long, Product> productMap = products.stream()
-                .collect(Collectors.toMap(Product::getId, p -> p));
 
-// 5. Convert sang ProductResponse theo thứ tự recs
+        Map<Long, Product> map = new HashMap<>();
+        for (Product p : products) {
+            map.put(p.getId(), p);
+        }
+
         List<ProductResponse> result = new ArrayList<>();
-
-        for (AiRecommendation rec : recs) {
-            Product p = productMap.get(rec.getProductId());
+        for (Long id : productIds) {
+            Product p = map.get(id);
             if (p != null) {
                 result.add(toProductResponse(p));
             }
         }
-
         return result;
+        
     }
 
-    // Map tối thiểu Product -> ProductResponse; sellerInfo để null cho JSON bỏ qua
-    private ProductResponse toProductResponse(Product product) {
-        ProductResponse res = new ProductResponse();
-        res.setId(product.getId());
-        res.setSku(product.getSku());
-        res.setName(product.getName());
-        res.setDescription(product.getDescription());
-        res.setPrice(product.getPrice());
-        res.setStockQuantity(product.getStockQuantity());
-        res.setImageUrl(product.getImageUrl());
-        res.setActive(product.isActive());
-        res.setCreatedAt(product.getCreatedAt());
-        res.setUpdatedAt(product.getUpdatedAt());
+    // =========================
+    // MAPPING (KHÔNG DÙNG builder)
+    // =========================
+    private ProductResponse toProductResponse(Product p) {
+        // ⚠️ Nếu ProductResponse của bạn là record hoặc constructor khác,
+        // bạn chỉnh lại đúng fields đang có.
+        ProductResponse dto = new ProductResponse();
 
-        if (product.getCategory() != null) {
-            res.setCategoryId(product.getCategory().getId());
-            res.setCategoryName(product.getCategory().getName());
-        }
+        // dưới đây là ví dụ phổ biến, bạn sửa theo class thực tế:
+        dto.setId(p.getId());
+        dto.setName(p.getName());
+        dto.setPrice(p.getPrice());
+        dto.setImageUrl(p.getImageUrl());
 
-        // SellerInfo: nếu sau này bạn có seller_profile client thì set thêm ở đây
-        // ProductResponse.SellerInfo sellerInfo = new ProductResponse.SellerInfo();
-        // sellerInfo.setStoreId(product.getStoreId());
-        // res.setSellerInfo(sellerInfo);
-
-        return res;
+        return dto;
     }
 
     @Override
-@Transactional(readOnly = true)
-public List<ProductResponse> getRecommendationsForGuest(int limit) {
-
-    // Lấy tất cả recommendation & sort theo score giảm dần
-    List<AiRecommendation> recs =
-            aiRecommendationRepository.findTop200ByOrderByPredictedScoreDesc();
-
-    if (recs.isEmpty()) {
-        return Collections.emptyList();
+    public List<ProductResponse> getSimilarProducts(Long productId, int limit) {
+        List<Long> ids = callRecommenderSimilar(productId, limit);
+        return fetchProductsKeepOrder(ids);
     }
 
-    // Shuffle để tạo cảm giác mới
-    Collections.shuffle(recs);
+    private List<Long> callRecommenderSimilar(Long productId, int limit) {
+        try {
+            String url = RECOMMENDER_BASE_URL + "/similar?product_id=" + productId + "&n=" + limit;
 
-    // Giới hạn số lượng
-    recs = recs.subList(0, Math.min(limit, recs.size()));
+            ResponseEntity<List<Long>> res = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    new ParameterizedTypeReference<List<Long>>() {}
+            );
 
-    List<Long> productIds = recs.stream()
-            .map(AiRecommendation::getProductId)
-            .toList();
-
-    List<Product> products = productRepository.findAllById(productIds);
-
-    return products.stream()
-            .map(this::toProductResponse)
-            .toList();
-}
-
+            return res.getBody() != null ? res.getBody() : List.of();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
 }

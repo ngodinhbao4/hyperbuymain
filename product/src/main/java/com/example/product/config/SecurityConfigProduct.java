@@ -64,6 +64,7 @@ public class SecurityConfigProduct {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Ảnh public không cần token
                         .requestMatchers(publicImagesPathPattern).permitAll()
                         .requestMatchers("/api/v1/recommendations/guest").permitAll()
@@ -72,6 +73,7 @@ public class SecurityConfigProduct {
                         // Nếu muốn mở GET product public cho khách vãng lai thì thêm:
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/recommendations/similar/**").permitAll()
 
 
                         // Các request còn lại yêu cầu JWT
@@ -87,7 +89,7 @@ public class SecurityConfigProduct {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-
+        
         configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.addAllowedMethod("*");
         configuration.addAllowedHeader("*");        // ⭐ Cho phép x-store-id

@@ -18,7 +18,7 @@ public class AiRecommendationController {
 
     private final AiRecommendationService aiRecommendationService;
 
-    // 🟢 Gợi ý cho chính user hiện tại
+    // ✅ Gợi ý cho user hiện tại (đã đăng nhập)
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getMyRecommendations(
             @AuthenticationPrincipal Jwt jwt,
@@ -26,50 +26,47 @@ public class AiRecommendationController {
     ) {
         String username = jwt.getSubject(); // subject = username
 
-        List<ProductResponse> products =
-                aiRecommendationService.getRecommendationsForUser(username, limit);
+        List<ProductResponse> products = aiRecommendationService.getRecommendationsForUser(username, limit);
 
         ApiResponse<List<ProductResponse>> response = ApiResponse.<List<ProductResponse>>builder()
                 .code(1000)
-                .message("Lấy danh sách gợi ý AI thành công")
+                .message("Gợi ý AI cho user: " + username)
                 .result(products)
                 .build();
 
         return ResponseEntity.ok(response);
     }
 
-    // 🟡 Endpoint debug: gợi ý cho username bất kỳ (dùng lúc test Postman)
-    @GetMapping("/{username}")
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> getRecommendationsForUser(
-            @PathVariable String username,
-            @RequestParam(defaultValue = "12") int limit
-    ) {
-        List<ProductResponse> products =
-                aiRecommendationService.getRecommendationsForUser(username, limit);
+    // ✅ Gợi ý cho khách (chưa đăng nhập) -> popular / trending
+        @GetMapping("/guest")
+        public ResponseEntity<ApiResponse<List<ProductResponse>>> getGuestRecommendations(
+                @RequestParam(defaultValue = "12") int limit
+        ) {
+                List<ProductResponse> products = aiRecommendationService.getRecommendationsForGuest(limit);
+
+                ApiResponse<List<ProductResponse>> response = ApiResponse.<List<ProductResponse>>builder()
+                        .code(1000)
+                        .message("Gợi ý AI cho khách chưa đăng nhập")
+                        .result(products)
+                        .build();
+
+                return ResponseEntity.ok(response);
+        }
+
+        @GetMapping("/similar/{productId}")
+        public ResponseEntity<ApiResponse<List<ProductResponse>>> getSimilarProducts(
+                @PathVariable Long productId,
+                @RequestParam(defaultValue = "10") int limit
+        ) {
+        List<ProductResponse> products = aiRecommendationService.getSimilarProducts(productId, limit);
 
         ApiResponse<List<ProductResponse>> response = ApiResponse.<List<ProductResponse>>builder()
                 .code(1000)
-                .message("Lấy danh sách gợi ý AI cho user " + username + " thành công")
+                .message("Sản phẩm tương tự cho productId=" + productId)
                 .result(products)
                 .build();
 
         return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/guest")
-public ResponseEntity<ApiResponse<List<ProductResponse>>> getGuestRecommendations(
-        @RequestParam(defaultValue = "12") int limit
-) {
-    List<ProductResponse> products = 
-            aiRecommendationService.getRecommendationsForGuest(limit);
-
-    ApiResponse<List<ProductResponse>> response = ApiResponse.<List<ProductResponse>>builder()
-            .code(1000)
-            .message("Gợi ý AI cho khách chưa đăng nhập")
-            .result(products)
-            .build();
-
-    return ResponseEntity.ok(response);
-}
-
+        }
+    
 }

@@ -77,6 +77,8 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedOrigins(List.of("http://127.0.0.1:5500", "http://localhost:5500"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.addAllowedMethod("*");
         configuration.addAllowedHeader("*");        // ⭐ Cho phép x-store-id
         configuration.addExposedHeader("*");        // ⭐ FE có thể đọc response headers
