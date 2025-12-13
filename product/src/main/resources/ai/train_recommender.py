@@ -1,32 +1,40 @@
+# train_recommender.py
+# CF Recommendation bằng Implicit ALS (Collaborative Filtering)
+# - Dùng 3 tín hiệu: view, purchase, rating
+# - Train: ALS (implicit) trên item-user matrix
+# - Recommend: truyền 1 dòng user_items = X_user_item[u] (1 x items) để hợp với implicit version hiện tại
+# - Không cần lưu score/rank vào DB (demo in ra kết quả)
+
+import os
+
+# (Tuỳ chọn) giảm warning hiệu năng OpenBLAS
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 import numpy as np
 import pandas as pd
 import pymysql
-from datetime import datetime
+
+from scipy.sparse import coo_matrix
+from implicit.als import AlternatingLeastSquares
 
 # =============================
-# 0. HẰNG SỐ TRỌNG SỐ & KẾT NỐI
+# 0. TRỌNG SỐ & KẾT NỐI
 # =============================
+VIEW_WEIGHT   = 1.0
+BUY_WEIGHT    = 20.0
+RATING_WEIGHT = 5.0
+BASE_RATING   = 3.0
 
-# Trọng số cho từng loại tín hiệu
-VIEW_WEIGHT   = 0.7   # lượt xem (log)
-BUY_WEIGHT    = 2.0   # mua hàng
-RATING_WEIGHT = 1.2   # rating user nhập
-BASE_RATING   = 3.0   # coi 3 sao là mức trung bình
-
-# Ngưỡng lọc nhiễu (điểm rating tối thiểu để giữ lại)
-MIN_SIGNAL_SCORE = 0.5
-
-# Thông tin MySQL (theo docker-compose)
 MYSQL_HOST = "localhost"
-MYSQL_PORT = 3307            # vì Docker map 3307:3306
+MYSQL_PORT = 3307
 MYSQL_USER = "root"
 MYSQL_PASSWORD = "baotrong"
 
 PRODUCT_DB = "hyperbuy_product_db"
-ORDER_DB = "hyperbuy_order_db"
+ORDER_DB   = "hyperbuy_order_db"
 
 
-def get_connection(db_name):
+def get_connection(db_name: str):
     return pymysql.connect(
         host=MYSQL_HOST,
         port=MYSQL_PORT,
@@ -36,11 +44,10 @@ def get_connection(db_name):
         cursorclass=pymysql.cursors.DictCursor
     )
 
-
 # =============================
-# 2. LẤY DỮ LIỆU TỪ 3 NGUỒN (GỘP BẰNG SQL)
+# 1. LOAD DATA (GỘP 3 NGUỒN)
 # =============================
-def load_data():
+def load_data_union() -> pd.DataFrame:
     conn = get_connection(PRODUCT_DB)
 
     sql = """
@@ -59,6 +66,7 @@ def load_data():
                 0               AS buy_count,
                 NULL            AS rating_value
             FROM hyperbuy_product_db.product_view_history pvh
+            WHERE pvh.username IS NOT NULL
 
             UNION ALL
 
@@ -71,7 +79,8 @@ def load_data():
             FROM hyperbuy_order_db.orders o
             JOIN hyperbuy_order_db.order_items oi
                 ON o.id = oi.order_id
-            WHERE o.status IN ('CONFIRMED','DELIVERED')
+            WHERE o.user_id IS NOT NULL
+              AND o.status IN ('CONFIRMED','DELIVERED')
 
             UNION ALL
 
@@ -82,6 +91,7 @@ def load_data():
                 0               AS buy_count,
                 pr.rating_value AS rating_value
             FROM hyperbuy_product_db.product_ratings pr
+            WHERE pr.username IS NOT NULL
 
         ) AS t
         GROUP BY username, product_id;
@@ -93,19 +103,13 @@ def load_data():
     conn.close()
 
     df = pd.DataFrame(rows)
-    print("Rows after SQL union/group:", len(df))
-    print("Dtypes sau khi tạo DataFrame:")
-    print(df.dtypes)
-    print("5 dòng đầu:")
-    print(df.head())
-
     if df.empty:
-        print("Không có dòng (username, product_id) nào → không train được.")
-        return pd.DataFrame(columns=["username", "product_id", "rating"])
+        return df
 
-    # --- Làm sạch dữ liệu cơ bản ---
+    # Clean
     df = df.dropna(subset=["username", "product_id"])
     df["username"] = df["username"].astype(str).str.strip()
+
     df["product_id"] = pd.to_numeric(df["product_id"], errors="coerce")
     df = df.dropna(subset=["product_id"])
     df["product_id"] = df["product_id"].astype(int)
@@ -115,295 +119,175 @@ def load_data():
     df["rating_value"] = pd.to_numeric(df["rating_value"], errors="coerce").fillna(BASE_RATING)
     df["rating_value"] = df["rating_value"].clip(1.0, 5.0)
 
-    distinct_pairs = len(df[["username", "product_id"]].drop_duplicates())
-    print("Distinct (username, product_id) sau SQL + clean:", distinct_pairs)
-
-    if distinct_pairs == 0:
-        print("Sau khi clean vẫn không còn cặp (user, product) nào → dừng.")
-        return pd.DataFrame(columns=["username", "product_id", "rating"])
-
-    # --- TÍNH ĐIỂM TỔNG HỢP (RATING) ---
-    score = (
-        VIEW_WEIGHT   * np.log1p(df["view_count"]) +
-        BUY_WEIGHT    * df["buy_count"] +
-        RATING_WEIGHT * (df["rating_value"] - BASE_RATING)
-    )
-
-    score = score.clip(1.0, 5.0)
-    df["rating"] = score
-
-    # --- LỌC NHIỄU ---
-    # Bỏ các dòng gần như không có tín hiệu (view=0, buy=0, rating_value=BASE_RATING và score quá thấp)
-    mask_signal = (
-        (df["view_count"] > 0) |
-        (df["buy_count"] > 0) |
-        (df["rating_value"] != BASE_RATING)
-    )
-    df = df[mask_signal]
-    df = df[df["rating"] > MIN_SIGNAL_SCORE]
-
-    print("Sau khi lọc nhiễu, số dòng còn lại:", len(df))
-
-    if df.empty:
-        print("Sau khi lọc không còn dòng nào → không train được.")
-        return pd.DataFrame(columns=["username", "product_id", "rating"])
-
-    df_train = df[["username", "product_id", "rating"]].copy()
-    print("Total user-product rows dùng để train:", len(df_train))
-
-    return df_train
-
+    return df
 
 # =============================
-# 3. TẠO MAPPING USER/ITEM -> INDEX
+# 2. TẠO WEIGHT CHO IMPLICIT CF
 # =============================
-def build_index_mapping(df_train):
-    users = df_train["username"].unique()
-    products = df_train["product_id"].unique()
+def build_interaction_weight(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    w_view = VIEW_WEIGHT * np.log1p(df["view_count"].astype(float))
+    w_buy  = BUY_WEIGHT  * df["buy_count"].astype(float)
+    w_rate = np.where(df["rating_value"].astype(float) >= 4.0, RATING_WEIGHT, 0.0)
+
+    df["weight"] = w_view + w_buy + w_rate
+
+    # Bỏ dòng không có tín hiệu
+    df = df[df["weight"] > 0].copy()
+
+    return df[["username", "product_id", "weight"]]
+
+# =============================
+# 3. BUILD MAPPING + SPARSE MATRIX
+# =============================
+def build_mappings_and_matrix(df_w: pd.DataFrame):
+    users = df_w["username"].unique()
+    items = df_w["product_id"].unique()
 
     user_to_idx = {u: i for i, u in enumerate(users)}
     idx_to_user = {i: u for u, i in user_to_idx.items()}
 
-    prod_to_idx = {p: i for i, p in enumerate(products)}
-    idx_to_prod = {i: p for p, i in prod_to_idx.items()}
+    item_to_idx = {p: i for i, p in enumerate(items)}
+    idx_to_item = {i: p for p, i in item_to_idx.items()}
 
-    print("Num users:", len(users))
-    print("Num products:", len(products))
+    df_w = df_w.copy()
+    df_w["u"] = df_w["username"].map(user_to_idx)
+    df_w["i"] = df_w["product_id"].map(item_to_idx)
 
-    return user_to_idx, idx_to_user, prod_to_idx, idx_to_prod
+    # users x items
+    X_user_item = coo_matrix(
+        (df_w["weight"].astype(float), (df_w["u"].astype(int), df_w["i"].astype(int))),
+        shape=(len(users), len(items))
+    ).tocsr()
 
+    return user_to_idx, idx_to_user, item_to_idx, idx_to_item, X_user_item
 
 # =============================
-# 4. CHUẨN BỊ DỮ LIỆU TRAIN/TEST
+# 4. TRAIN ALS (CF)
 # =============================
-def build_train_test_tuples(df_train, user_to_idx, prod_to_idx, test_ratio=0.2):
-    data = []
-    for _, row in df_train.iterrows():
-        u = user_to_idx.get(row["username"])
-        i = prod_to_idx.get(row["product_id"])
-        r = float(row["rating"])
-        if u is None or i is None:
+def train_als(X_item_user, factors=64, reg=0.01, iterations=20):
+    model = AlternatingLeastSquares(
+        factors=factors,
+        regularization=reg,
+        iterations=iterations
+    )
+    model.fit(X_item_user)  # items x users (CSR)
+    return model
+
+# =============================
+# 5. RECOMMEND (FIX: truyền 1 dòng user_items)
+# =============================
+def recommend_for_user(model, X_user_item, user_to_idx, idx_to_item, username, N=10):
+    if username not in user_to_idx:
+        return []
+
+    u = int(user_to_idx[username])
+    user_items_1row = X_user_item[u]  # (1 x items)
+
+    recs = model.recommend(
+        userid=0,
+        user_items=user_items_1row,
+        N=N,
+        filter_already_liked_items=True
+    )
+
+    # ----- parse output of implicit (nhiều version) -----
+    item_indices = None
+
+    # Case 1: (ids, scores)
+    if isinstance(recs, tuple) and len(recs) == 2:
+        ids, _scores = recs
+        item_indices = np.asarray(ids)
+
+    else:
+        arr = np.asarray(recs)
+
+        # Case 2: ndarray NxK (K>=2). Thường item id nằm ở cột 0 hoặc 1 tùy version.
+        if arr.ndim == 2:
+            # thử cột 0 trước
+            cand0 = arr[:, 0]
+            # nếu cand0 có nhiều giá trị không nằm trong mapping mà cột 1 có vẻ đúng -> dùng cột 1
+            cand0_ok = np.mean([int(x) in idx_to_item for x in np.asarray(cand0).astype(int)]) if len(cand0) else 0
+            if arr.shape[1] > 1:
+                cand1 = arr[:, 1]
+                cand1_ok = np.mean([int(x) in idx_to_item for x in np.asarray(cand1).astype(int)]) if len(cand1) else 0
+                item_indices = cand1 if cand1_ok > cand0_ok else cand0
+            else:
+                item_indices = cand0
+
+        # Case 3: list/array 1D: [id1, id2, ...]
+        elif arr.ndim == 1:
+            item_indices = arr
+
+    if item_indices is None:
+        return []
+
+    # ----- sanitize indices to avoid KeyError -----
+    num_items = len(idx_to_item)
+    out = []
+    for x in np.asarray(item_indices):
+        try:
+            i = int(x)
+        except Exception:
             continue
-        data.append((u, i, r))
 
-    if len(data) == 0:
-        raise ValueError("Không có dữ liệu để train AI (data length = 0)")
+        # Nếu bị 1-based (1..num_items) thì chỉnh về 0-based
+        if i not in idx_to_item and (i - 1) in idx_to_item:
+            i = i - 1
 
-    data = np.array(data, dtype=object)
-    idx = np.arange(len(data))
-    np.random.shuffle(idx)
+        # Bỏ các id không hợp lệ
+        if i < 0 or i >= num_items:
+            continue
+        if i not in idx_to_item:
+            continue
 
-    if len(data) < 2:
-        print("Cảnh báo: dữ liệu quá ít, không thể chia train/test. Sẽ dùng chung cho cả train và test.")
-        return data, data
+        out.append(int(idx_to_item[i]))
 
-    split = int(len(data) * (1 - test_ratio))
-    split = max(1, min(split, len(data) - 1))
+    # unique nhưng giữ thứ tự
+    seen = set()
+    final = []
+    for pid in out:
+        if pid not in seen:
+            seen.add(pid)
+            final.append(pid)
+        if len(final) >= N:
+            break
 
-    train_idx = idx[:split]
-    test_idx = idx[split:]
-
-    train_data = data[train_idx]
-    test_data = data[test_idx]
-
-    print("Train size:", len(train_data))
-    print("Test size:", len(test_data))
-
-    return train_data, test_data
-
-
+    return final
 # =============================
-# 5. MATRIX FACTORIZATION (SGD)
-# =============================
-def train_mf(train_data, num_users, num_items,
-             n_factors=30,    # tăng nhẹ số chiều ẩn
-             n_epochs=30,     # thêm vài epoch
-             lr=0.01,
-             reg=0.03):       # regularization cao hơn chút để đỡ overfit
-    P = 0.1 * np.random.randn(num_users, n_factors)  # user factors
-    Q = 0.1 * np.random.randn(num_items, n_factors)  # item factors
-
-    bu = np.zeros(num_users)
-    bi = np.zeros(num_items)
-
-    ratings = np.array([float(r) for (_, _, r) in train_data], dtype=float)
-    mu = ratings.mean()
-    print(f"Global mean rating: {mu:.4f}")
-
-    for epoch in range(1, n_epochs + 1):
-        np.random.shuffle(train_data)
-        se = 0.0
-
-        for (u, i, r) in train_data:
-            u = int(u)
-            i = int(i)
-            r = float(r)
-
-            pred = mu + bu[u] + bi[i] + np.dot(P[u], Q[i])
-            err = r - pred
-
-            se += err ** 2
-
-            # update biases
-            bu[u] += lr * (err - reg * bu[u])
-            bi[i] += lr * (err - reg * bi[i])
-
-            # update latent factors
-            Pu = P[u].copy()
-            Qi = Q[i].copy()
-            P[u] += lr * (err * Qi - reg * Pu)
-            Q[i] += lr * (err * Pu - reg * Qi)
-
-        rmse_train = np.sqrt(se / len(train_data))
-        print(f"Epoch {epoch}/{n_epochs} - Train RMSE: {rmse_train:.4f}")
-
-    return P, Q, bu, bi, mu
-
-
-def evaluate_mf(test_data, P, Q, bu, bi, mu):
-    if test_data is None or len(test_data) == 0:
-        print("Không có test_data để evaluate, bỏ qua evaluate.")
-        return None
-
-    se = 0.0
-    for (u, i, r) in test_data:
-        u = int(u)
-        i = int(i)
-        r = float(r)
-        pred = mu + bu[u] + bi[i] + np.dot(P[u], Q[i])
-        se += (r - pred) ** 2
-    rmse = np.sqrt(se / len(test_data))
-    print(f"Test RMSE: {rmse:.4f}")
-    return rmse
-
-
-# =============================
-# 6. TẠO GỢI Ý & LƯU DB
-# =============================
-def save_recommendations(df_train, P, Q, bu, bi, mu,
-                         user_to_idx, idx_to_user, idx_to_prod,
-                         top_n=20):
-    num_users, num_items = P.shape[0], Q.shape[0]
-
-    if num_users == 0 or num_items == 0:
-        print("Không có user hoặc product để tạo gợi ý, bỏ qua lưu recommendations.")
-        return
-
-    # map product_id -> index
-    prod_to_idx = {v: k for k, v in idx_to_prod.items()}
-    user_interactions = {u_idx: set() for u_idx in range(num_users)}
-
-    for _, row in df_train.iterrows():
-        u = user_to_idx.get(row["username"])
-        i = prod_to_idx.get(row["product_id"])
-        if u is not None and i is not None:
-            user_interactions[u].add(i)
-
-    all_items = np.arange(num_items)
-    recommendations = []
-
-    for u_idx in range(num_users):
-        interacted = user_interactions.get(u_idx, set())
-        if len(interacted) > 0:
-            candidates = np.setdiff1d(all_items, np.array(list(interacted), dtype=int))
-        else:
-            candidates = all_items
-
-        bu_u = bu[u_idx]
-        Pu = P[u_idx]
-        preds = []
-        for i_idx in candidates:
-            score = mu + bu_u + bi[i_idx] + np.dot(Pu, Q[i_idx])
-            preds.append((i_idx, score))
-
-        preds.sort(key=lambda x: x[1], reverse=True)
-
-        for i_idx, score in preds[:top_n]:
-            username = idx_to_user[u_idx]
-            product_id = idx_to_prod[i_idx]
-            recommendations.append((username, int(product_id), float(score)))
-
-    print("Total recommendations generated:", len(recommendations))
-
-    if not recommendations:
-        print("Không có recommendation nào để lưu vào DB.")
-        return
-
-    conn_product = get_connection(PRODUCT_DB)
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    with conn_product.cursor() as cursor:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ai_recommendations (
-                id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(150) NOT NULL,
-                product_id BIGINT NOT NULL,
-                predicted_score FLOAT NOT NULL,
-                created_at DATETIME NOT NULL,
-                INDEX idx_user (username),
-                INDEX idx_product (product_id)
-            );
-        """)
-        cursor.execute("TRUNCATE TABLE ai_recommendations;")
-
-        insert_sql = """
-            INSERT INTO ai_recommendations (username, product_id, predicted_score, created_at)
-            VALUES (%s, %s, %s, %s)
-        """
-
-        cursor.executemany(insert_sql, [
-            (u, p, s, now) for (u, p, s) in recommendations
-        ])
-        conn_product.commit()
-
-    conn_product.close()
-    print("Saved recommendations into ai_recommendations.")
-
-
-# =============================
-# 7. MAIN
+# 6. MAIN
 # =============================
 def main():
-    print("=== LOAD DATA ===")
-    df_train = load_data()
-
-    if df_train is None or df_train.empty:
-        print("df_train trống → Không train được mô hình. Thoát script.")
+    print("=== LOAD DATA (union 3 nguồn) ===")
+    df = load_data_union()
+    if df.empty:
+        print("Không có dữ liệu → dừng.")
         return
 
-    user_to_idx, idx_to_user, prod_to_idx, idx_to_prod = build_index_mapping(df_train)
+    df_w = build_interaction_weight(df)
+    if df_w.empty:
+        print("Sau khi tạo weight, không còn tương tác → dừng.")
+        return
 
-    num_users = len(user_to_idx)
-    num_items = len(prod_to_idx)
+    user_to_idx, idx_to_user, item_to_idx, idx_to_item, X_user_item = build_mappings_and_matrix(df_w)
 
-    if num_users == 0 or num_items == 0:
-        raise ValueError("Không có user hoặc product nào sau khi build mapping.")
+    # Train cần items x users
+    X_item_user = X_user_item.T.tocsr()
 
-    print("=== BUILD TRAIN/TEST ===")
-    train_data, test_data = build_train_test_tuples(df_train, user_to_idx, prod_to_idx)
+    print(f"Users: {len(user_to_idx)} Items: {len(item_to_idx)} Interactions: {X_user_item.nnz}")
 
-    print("=== TRAIN MATRIX FACTORIZATION ===")
-    P, Q, bu, bi, mu = train_mf(
-        train_data=train_data,
-        num_users=num_users,
-        num_items=num_items
-    )
+    print("=== TRAIN ALS (CF implicit) ===")
+    model = train_als(X_item_user, factors=64, reg=0.01, iterations=20)
 
-    print("=== EVALUATE ON TEST SET ===")
-    evaluate_mf(test_data, P, Q, bu, bi, mu)
+    print("=== DEMO RECOMMEND ===")
+    demo_user = list(user_to_idx.keys())[0]
+    rec_products = recommend_for_user(model, X_user_item, user_to_idx, idx_to_item, demo_user, N=10)
 
-    print("=== GENERATE & SAVE RECOMMENDATIONS ===")
-    save_recommendations(
-        df_train=df_train,
-        P=P, Q=Q, bu=bu, bi=bi, mu=mu,
-        user_to_idx=user_to_idx,
-        idx_to_user=idx_to_user,
-        idx_to_prod=idx_to_prod,
-        top_n=20
-    )
+    print(f"Demo user: {demo_user}")
+    print("Recommended product_ids:", rec_products)
 
     print("=== DONE ===")
-
 
 if __name__ == "__main__":
     main()
